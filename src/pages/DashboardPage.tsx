@@ -32,6 +32,7 @@ const DashboardPage: React.FC = () => {
   const [event, setEvent] = useState<EventData | null>(null);
   const [stats, setStats] = useState<GuestStats>({ total: 0, confirmed: 0, pending: 0, declined: 0 });
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [purchaseLoading, setPurchaseLoading] = useState(false);
   const [showEventForm, setShowEventForm] = useState(false);
   const [form, setForm] = useState({
@@ -44,7 +45,18 @@ const DashboardPage: React.FC = () => {
 
   useEffect(() => {
     fetchEvent();
+    checkAdmin();
   }, [user]);
+
+  const checkAdmin = async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", user.id)
+      .eq("role", "admin");
+    if (data && data.length > 0) setIsAdmin(true);
+  };
 
   const fetchEvent = async () => {
     if (!user) return;
@@ -82,8 +94,10 @@ const DashboardPage: React.FC = () => {
       return;
     }
     setPurchaseLoading(true);
-    // Mock payment delay
-    await new Promise((r) => setTimeout(r, 1500));
+    // Skip mock payment for admins
+    if (!isAdmin) {
+      await new Promise((r) => setTimeout(r, 1500));
+    }
 
     const slug = `${form.bride_name.toLowerCase().replace(/\s+/g, "-")}-${form.groom_name.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`;
 
@@ -107,7 +121,7 @@ const DashboardPage: React.FC = () => {
       toast.error("Failed to create event: " + error.message);
       return;
     }
-    toast.success("Payment successful! Your invitation has been created 🌸");
+    toast.success(isAdmin ? "Event created successfully! 🌸" : "Payment successful! Your invitation has been created 🌸");
     setEvent(data);
     setShowEventForm(false);
   };
@@ -162,10 +176,16 @@ const DashboardPage: React.FC = () => {
                 <p className="text-muted-foreground font-body mb-6 max-w-md mx-auto">
                   Get a beautiful digital wedding invitation with guest management, RSVP tracking, and seating tables.
                 </p>
-                <div className="inline-block bg-champagne rounded-xl px-6 py-3 mb-6">
-                  <span className="font-display text-3xl text-foreground font-bold">€25</span>
-                  <span className="text-muted-foreground font-body ml-2">one-time payment</span>
-                </div>
+                {isAdmin ? (
+                  <div className="inline-block bg-green-50 border border-green-200 rounded-xl px-6 py-3 mb-6">
+                    <span className="font-display text-lg text-green-700 font-bold">Admin Access — Free</span>
+                  </div>
+                ) : (
+                  <div className="inline-block bg-champagne rounded-xl px-6 py-3 mb-6">
+                    <span className="font-display text-3xl text-foreground font-bold">€25</span>
+                    <span className="text-muted-foreground font-body ml-2">one-time payment</span>
+                  </div>
+                )}
                 <ul className="text-sm text-muted-foreground font-body space-y-2 mb-8 text-left max-w-xs mx-auto">
                   {["Beautiful digital invitation page", "Unlimited guest management", "RSVP tracking", "Seating table management", "Unique invitation link"].map(f => (
                     <li key={f} className="flex items-center gap-2">
@@ -178,7 +198,7 @@ const DashboardPage: React.FC = () => {
                   onClick={() => setShowEventForm(true)}
                   className="gradient-gold text-primary-foreground px-8 py-3.5 rounded-xl font-semibold font-body shadow-gold hover:opacity-90 transition-all"
                 >
-                  Purchase Invitation – €25
+                  {isAdmin ? "Create Invitation (Admin)" : "Purchase Invitation – €25"}
                 </button>
               </div>
             ) : (
@@ -246,9 +266,9 @@ const DashboardPage: React.FC = () => {
                     className="flex-1 py-3 rounded-xl gradient-gold text-primary-foreground font-semibold font-body shadow-gold hover:opacity-90 transition-all disabled:opacity-60 flex items-center justify-center gap-2"
                   >
                     {purchaseLoading ? (
-                      <><Loader2 size={16} className="animate-spin" /> Processing payment...</>
+                      <><Loader2 size={16} className="animate-spin" /> {isAdmin ? "Creating..." : "Processing payment..."}</>
                     ) : (
-                      "Pay €25 & Create"
+                      isAdmin ? "Create Event" : "Pay €25 & Create"
                     )}
                   </button>
                 </div>
