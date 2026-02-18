@@ -2,8 +2,9 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import DashboardLayout from "@/components/DashboardLayout";
+import FloorPlanView from "@/components/FloorPlanView";
 import { toast } from "sonner";
-import { Plus, Trash2, Users, X, Loader2 } from "lucide-react";
+import { Plus, Trash2, Users, X, Loader2, LayoutGrid, Map } from "lucide-react";
 
 interface SeatingTable {
   id: string;
@@ -27,7 +28,7 @@ const RoundTableView: React.FC<{
   occupied: number;
   label: string;
 }> = ({ capacity, occupied, label }) => {
-  const r = 52; // radius of seat orbit
+  const r = 52;
   const seats = Array.from({ length: capacity }, (_, i) => {
     const angle = (2 * Math.PI * i) / capacity - Math.PI / 2;
     return { x: 80 + r * Math.cos(angle), y: 80 + r * Math.sin(angle) };
@@ -38,33 +39,12 @@ const RoundTableView: React.FC<{
 
   return (
     <svg viewBox="0 0 160 160" className="w-full h-full">
-      {/* Table surface */}
-      <circle
-        cx="80" cy="80" r="34"
-        fill="hsl(var(--champagne))"
-        stroke={tableColor}
-        strokeWidth="3"
-      />
-      {/* Label */}
-      <text
-        x="80" y="84"
-        textAnchor="middle"
-        fontSize="9"
-        fontFamily="'Playfair Display', serif"
-        fill="hsl(var(--foreground))"
-      >
+      <circle cx="80" cy="80" r="34" fill="hsl(var(--champagne))" stroke={tableColor} strokeWidth="3" />
+      <text x="80" y="84" textAnchor="middle" fontSize="9" fontFamily="'Playfair Display', serif" fill="hsl(var(--foreground))">
         {label.length > 9 ? label.slice(0, 8) + "…" : label}
       </text>
-      {/* Seats */}
       {seats.map((s, i) => (
-        <circle
-          key={i}
-          cx={s.x} cy={s.y} r="10"
-          fill={i < occupied ? tableColor : "hsl(var(--muted))"}
-          stroke="hsl(var(--border))"
-          strokeWidth="1.5"
-          opacity={i < occupied ? 1 : 0.5}
-        />
+        <circle key={i} cx={s.x} cy={s.y} r="10" fill={i < occupied ? tableColor : "hsl(var(--muted))"} stroke="hsl(var(--border))" strokeWidth="1.5" opacity={i < occupied ? 1 : 0.5} />
       ))}
     </svg>
   );
@@ -80,27 +60,22 @@ const SquareTableView: React.FC<{
   const tableColor =
     pct >= 1 ? "hsl(0 72% 51%)" : pct >= 0.8 ? "hsl(38 92% 50%)" : "hsl(var(--gold))";
 
-  // Distribute seats around 4 sides
   const perSide = Math.ceil(capacity / 4);
   const seats: { x: number; y: number }[] = [];
   const cx = 80, cy = 80, half = 30, gap = 20;
 
-  // top
   for (let i = 0; i < perSide && seats.length < capacity; i++) {
     const totalW = (perSide - 1) * gap;
     seats.push({ x: cx - totalW / 2 + i * gap, y: cy - half - 14 });
   }
-  // right
   for (let i = 0; i < perSide && seats.length < capacity; i++) {
     const totalH = (perSide - 1) * gap;
     seats.push({ x: cx + half + 14, y: cy - totalH / 2 + i * gap });
   }
-  // bottom
   for (let i = 0; i < perSide && seats.length < capacity; i++) {
     const totalW = (perSide - 1) * gap;
     seats.push({ x: cx - totalW / 2 + i * gap, y: cy + half + 14 });
   }
-  // left
   for (let i = 0; i < perSide && seats.length < capacity; i++) {
     const totalH = (perSide - 1) * gap;
     seats.push({ x: cx - half - 14, y: cy - totalH / 2 + i * gap });
@@ -108,35 +83,12 @@ const SquareTableView: React.FC<{
 
   return (
     <svg viewBox="0 0 160 160" className="w-full h-full">
-      {/* Table surface */}
-      <rect
-        x={cx - half} y={cy - half}
-        width={half * 2} height={half * 2}
-        rx="6"
-        fill="hsl(var(--champagne))"
-        stroke={tableColor}
-        strokeWidth="3"
-      />
-      {/* Label */}
-      <text
-        x="80" y="84"
-        textAnchor="middle"
-        fontSize="9"
-        fontFamily="'Playfair Display', serif"
-        fill="hsl(var(--foreground))"
-      >
+      <rect x={cx - half} y={cy - half} width={half * 2} height={half * 2} rx="6" fill="hsl(var(--champagne))" stroke={tableColor} strokeWidth="3" />
+      <text x="80" y="84" textAnchor="middle" fontSize="9" fontFamily="'Playfair Display', serif" fill="hsl(var(--foreground))">
         {label.length > 9 ? label.slice(0, 8) + "…" : label}
       </text>
-      {/* Seats */}
       {seats.map((s, i) => (
-        <circle
-          key={i}
-          cx={s.x} cy={s.y} r="9"
-          fill={i < occupied ? tableColor : "hsl(var(--muted))"}
-          stroke="hsl(var(--border))"
-          strokeWidth="1.5"
-          opacity={i < occupied ? 1 : 0.5}
-        />
+        <circle key={i} cx={s.x} cy={s.y} r="9" fill={i < occupied ? tableColor : "hsl(var(--muted))"} stroke="hsl(var(--border))" strokeWidth="1.5" opacity={i < occupied ? 1 : 0.5} />
       ))}
     </svg>
   );
@@ -151,8 +103,8 @@ const TablesPage: React.FC = () => {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ table_name: "", capacity: "8", shape: "round" as "round" | "square" });
   const [saving, setSaving] = useState(false);
-  // local shape memory keyed by table id
   const [shapeMap, setShapeMap] = useState<Record<string, "round" | "square">>({});
+  const [view, setView] = useState<"grid" | "floorplan">("grid");
 
   const fetchData = useCallback(async () => {
     if (!isValidId) { setLoading(false); return; }
@@ -167,7 +119,6 @@ const TablesPage: React.FC = () => {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // Restore shape map from localStorage
   useEffect(() => {
     if (!eventId) return;
     const stored = localStorage.getItem(`shapeMap_${eventId}`);
@@ -191,7 +142,6 @@ const TablesPage: React.FC = () => {
     }).select().single();
     setSaving(false);
     if (error || !data) { toast.error(error?.message ?? "Error"); return; }
-    // store shape choice
     saveShapeMap({ ...shapeMap, [data.id]: form.shape });
     toast.success("Table created!");
     setForm({ table_name: "", capacity: "8", shape: "round" });
@@ -233,24 +183,58 @@ const TablesPage: React.FC = () => {
     <DashboardLayout>
       <div className="space-y-6 animate-fade-up">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="font-display text-3xl text-foreground">Seating Tables</h1>
-            <p className="text-muted-foreground font-body mt-1">{tables.length} tables created</p>
+            <p className="text-muted-foreground font-body mt-1">{tables.length} tables · {guests.filter(g => g.table_id).length}/{guests.length} guests seated</p>
           </div>
-          <button
-            onClick={() => setShowForm(true)}
-            className="flex items-center gap-2 gradient-gold text-primary-foreground px-4 py-2.5 rounded-xl font-semibold font-body text-sm shadow-gold hover:opacity-90 transition-all"
-          >
-            <Plus size={16} /> Add Table
-          </button>
+          <div className="flex items-center gap-3">
+            {/* View toggle */}
+            <div className="flex items-center bg-muted rounded-xl p-1 gap-1">
+              <button
+                onClick={() => setView("grid")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold font-body transition-all ${
+                  view === "grid"
+                    ? "bg-card shadow-card text-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <LayoutGrid size={14} /> Grid
+              </button>
+              <button
+                onClick={() => setView("floorplan")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold font-body transition-all ${
+                  view === "floorplan"
+                    ? "bg-card shadow-card text-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Map size={14} /> Floor Plan
+              </button>
+            </div>
+            <button
+              onClick={() => setShowForm(true)}
+              className="flex items-center gap-2 gradient-gold text-primary-foreground px-4 py-2.5 rounded-xl font-semibold font-body text-sm shadow-gold hover:opacity-90 transition-all"
+            >
+              <Plus size={16} /> Add Table
+            </button>
+          </div>
         </div>
 
         {loading ? (
           <div className="flex justify-center py-16">
             <Loader2 className="animate-spin text-gold w-8 h-8" />
           </div>
+        ) : view === "floorplan" ? (
+          /* ── Floor Plan View ── */
+          <FloorPlanView
+            tables={tables}
+            guests={guests}
+            shapeMap={shapeMap}
+            eventId={eventId!}
+          />
         ) : (
+          /* ── Grid View ── */
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {tables.map((table) => {
               const tableGuests = getTableGuests(table.id);
@@ -259,7 +243,6 @@ const TablesPage: React.FC = () => {
 
               return (
                 <div key={table.id} className="bg-card rounded-2xl shadow-card border border-border p-5 flex flex-col gap-3">
-                  {/* Top-view visual */}
                   <div className="relative w-full aspect-square max-w-[160px] mx-auto">
                     {shape === "round" ? (
                       <RoundTableView capacity={table.capacity} occupied={occupied} label={table.table_name} />
@@ -268,7 +251,6 @@ const TablesPage: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Info row */}
                   <div className="flex items-start justify-between">
                     <div>
                       <h3 className="font-display text-base font-semibold leading-tight">{table.table_name}</h3>
@@ -276,36 +258,25 @@ const TablesPage: React.FC = () => {
                         {occupied}/{table.capacity} seats · {shape}
                       </p>
                     </div>
-                    <button
-                      onClick={() => handleDeleteTable(table.id)}
-                      className="text-muted-foreground hover:text-destructive transition-colors p-1"
-                    >
+                    <button onClick={() => handleDeleteTable(table.id)} className="text-muted-foreground hover:text-destructive transition-colors p-1">
                       <Trash2 size={14} />
                     </button>
                   </div>
 
-                  {/* Guests list */}
                   <div className="space-y-1 flex-1">
                     {tableGuests.map((g) => (
                       <div key={g.id} className="flex items-center justify-between text-xs">
                         <span className="font-body text-foreground truncate">{g.full_name}</span>
-                        <button
-                          onClick={() => handleAssignGuest(g.id, null)}
-                          className="text-muted-foreground hover:text-destructive transition-colors ml-1 shrink-0"
-                          title="Unassign"
-                        >
+                        <button onClick={() => handleAssignGuest(g.id, null)} className="text-muted-foreground hover:text-destructive transition-colors ml-1 shrink-0" title="Unassign">
                           <X size={11} />
                         </button>
                       </div>
                     ))}
                   </div>
 
-                  {/* Assign dropdown */}
                   {occupied < table.capacity && unassignedGuests.length > 0 && (
                     <select
-                      onChange={(e) => {
-                        if (e.target.value) { handleAssignGuest(e.target.value, table.id); e.target.value = ""; }
-                      }}
+                      onChange={(e) => { if (e.target.value) { handleAssignGuest(e.target.value, table.id); e.target.value = ""; } }}
                       className="w-full px-3 py-1.5 rounded-xl border border-input bg-background text-xs text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                     >
                       <option value="">+ Assign guest</option>
@@ -357,7 +328,6 @@ const TablesPage: React.FC = () => {
             </div>
 
             <div className="space-y-4">
-              {/* Shape picker */}
               <div>
                 <label className="block text-sm font-semibold mb-2">Table Shape</label>
                 <div className="grid grid-cols-2 gap-3">
@@ -372,7 +342,6 @@ const TablesPage: React.FC = () => {
                           : "border-border bg-background hover:bg-muted"
                       }`}
                     >
-                      {/* Mini preview */}
                       <svg viewBox="0 0 60 60" className="w-12 h-12">
                         {s === "round" ? (
                           <>
@@ -385,13 +354,9 @@ const TablesPage: React.FC = () => {
                         ) : (
                           <>
                             <rect x="18" y="18" width="24" height="24" rx="3" fill="hsl(var(--champagne))" stroke="hsl(var(--gold))" strokeWidth="2" />
-                            {/* top seats */}
                             {[22, 38].map((x, i) => <circle key={`t${i}`} cx={x} cy="11" r="4" fill="hsl(var(--gold-light))" stroke="hsl(var(--border))" strokeWidth="1" />)}
-                            {/* bottom seats */}
                             {[22, 38].map((x, i) => <circle key={`b${i}`} cx={x} cy="49" r="4" fill="hsl(var(--gold-light))" stroke="hsl(var(--border))" strokeWidth="1" />)}
-                            {/* left */}
                             <circle cx="11" cy="30" r="4" fill="hsl(var(--gold-light))" stroke="hsl(var(--border))" strokeWidth="1" />
-                            {/* right */}
                             <circle cx="49" cy="30" r="4" fill="hsl(var(--gold-light))" stroke="hsl(var(--border))" strokeWidth="1" />
                           </>
                         )}
