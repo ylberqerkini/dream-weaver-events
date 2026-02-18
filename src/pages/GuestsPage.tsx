@@ -24,9 +24,12 @@ interface SeatingTable {
   capacity: number;
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const GuestsPage: React.FC = () => {
   const { eventId } = useParams<{ eventId: string }>();
   const { user } = useAuth();
+  const isValidId = !!eventId && UUID_REGEX.test(eventId);
   const [guests, setGuests] = useState<Guest[]>([]);
   const [tables, setTables] = useState<SeatingTable[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,7 +48,7 @@ const GuestsPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
 
   const fetchGuests = useCallback(async () => {
-    if (!eventId) return;
+    if (!isValidId) { setLoading(false); return; }
     const { data } = await supabase
       .from("guests")
       .select("*")
@@ -53,16 +56,16 @@ const GuestsPage: React.FC = () => {
       .order("created_at", { ascending: false });
     if (data) setGuests(data);
     setLoading(false);
-  }, [eventId]);
+  }, [eventId, isValidId]);
 
   const fetchTables = useCallback(async () => {
-    if (!eventId) return;
+    if (!isValidId) return;
     const { data } = await supabase
       .from("seating_tables")
       .select("*")
       .eq("event_id", eventId);
     if (data) setTables(data);
-  }, [eventId]);
+  }, [eventId, isValidId]);
 
   useEffect(() => {
     fetchGuests();
@@ -145,6 +148,17 @@ const GuestsPage: React.FC = () => {
       </span>
     );
   };
+
+  if (!isValidId) {
+    return (
+      <DashboardLayout>
+        <div className="text-center py-20">
+          <h2 className="font-display text-2xl mb-2">No event found</h2>
+          <p className="text-muted-foreground font-body">Please create your invitation first from the dashboard.</p>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>

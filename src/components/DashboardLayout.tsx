@@ -28,11 +28,10 @@ const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ children }) 
         .from("events")
         .select("id, slug")
         .eq("user_id", user.id)
-        .limit(1)
-        .single();
-      if (events) {
-        setEventSlug(events.slug);
-        setEventId(events.id);
+        .limit(1);
+      if (events && events.length > 0) {
+        setEventSlug(events[0].slug);
+        setEventId(events[0].id);
       }
     };
     fetchData();

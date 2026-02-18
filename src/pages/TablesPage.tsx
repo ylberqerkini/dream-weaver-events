@@ -19,8 +19,11 @@ interface Guest {
   table_id: string | null;
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const TablesPage: React.FC = () => {
   const { eventId } = useParams<{ eventId: string }>();
+  const isValidId = !!eventId && UUID_REGEX.test(eventId);
   const [tables, setTables] = useState<SeatingTable[]>([]);
   const [guests, setGuests] = useState<Guest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,7 +32,7 @@ const TablesPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
 
   const fetchData = useCallback(async () => {
-    if (!eventId) return;
+    if (!isValidId) { setLoading(false); return; }
     const [tablesRes, guestsRes] = await Promise.all([
       supabase.from("seating_tables").select("*").eq("event_id", eventId).order("table_name"),
       supabase.from("guests").select("id, full_name, rsvp_status, table_id").eq("event_id", eventId),
@@ -37,7 +40,7 @@ const TablesPage: React.FC = () => {
     if (tablesRes.data) setTables(tablesRes.data);
     if (guestsRes.data) setGuests(guestsRes.data);
     setLoading(false);
-  }, [eventId]);
+  }, [eventId, isValidId]);
 
   useEffect(() => {
     fetchData();
@@ -78,6 +81,17 @@ const TablesPage: React.FC = () => {
     guests.filter((g) => g.table_id === tableId);
 
   const unassignedGuests = guests.filter((g) => !g.table_id);
+
+  if (!isValidId) {
+    return (
+      <DashboardLayout>
+        <div className="text-center py-20">
+          <h2 className="font-display text-2xl mb-2">No event found</h2>
+          <p className="text-muted-foreground font-body">Please create your invitation first from the dashboard.</p>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
