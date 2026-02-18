@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Flower, MapPin, Calendar, Loader2 } from "lucide-react";
+import { Flower, MapPin, Calendar, Loader2, Images } from "lucide-react";
 
 interface EventData {
   id: string;
@@ -15,14 +15,24 @@ interface EventData {
   is_active: boolean;
 }
 
+interface Photo {
+  id: string;
+  storage_path: string;
+  caption: string | null;
+  display_order: number;
+  url: string;
+}
+
 const InvitePage: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
   const [event, setEvent] = useState<EventData | null>(null);
+  const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [countdown, setCountdown] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
   const [form, setForm] = useState({ full_name: "", phone: "", side: "bride" });
   const [rsvpStatus, setRsvpStatus] = useState<"idle" | "submitting" | "confirmed" | "declined">("idle");
+  const [lightboxPhoto, setLightboxPhoto] = useState<Photo | null>(null);
 
   useEffect(() => {
     const fetchEvent = async () => {
@@ -36,11 +46,30 @@ const InvitePage: React.FC = () => {
         setNotFound(true);
       } else {
         setEvent(data);
+        fetchPhotos(data.id);
       }
       setLoading(false);
     };
     fetchEvent();
   }, [slug]);
+
+  const fetchPhotos = async (eventId: string) => {
+    const { data } = await supabase
+      .from("event_photos" as any)
+      .select("*")
+      .eq("event_id", eventId)
+      .order("display_order", { ascending: true });
+
+    if (data && data.length > 0) {
+      const withUrls = data.map((p: any) => {
+        const { data: urlData } = supabase.storage
+          .from("wedding-photos")
+          .getPublicUrl(p.storage_path);
+        return { ...p, url: urlData.publicUrl };
+      });
+      setPhotos(withUrls);
+    }
+  };
 
   useEffect(() => {
     if (!event) return;
@@ -283,6 +312,37 @@ const InvitePage: React.FC = () => {
           )}
         </div>
 
+        {/* Photo Gallery */}
+        {photos.length > 0 && (
+          <div className="bg-card/90 backdrop-blur-sm rounded-3xl shadow-card border border-border/50 p-6 md:p-8 animate-fade-up" style={{ animationDelay: "0.4s" }}>
+            <div className="flex items-center gap-3 mb-5">
+              <Images size={18} className="text-gold" />
+              <h2 className="font-display text-2xl">Our Gallery</h2>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {photos.map((photo) => (
+                <button
+                  key={photo.id}
+                  onClick={() => setLightboxPhoto(photo)}
+                  className="aspect-square rounded-2xl overflow-hidden group relative"
+                >
+                  <img
+                    src={photo.url}
+                    alt={photo.caption || "Wedding photo"}
+                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                    loading="lazy"
+                  />
+                  {photo.caption && (
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-3 translate-y-full group-hover:translate-y-0 transition-transform duration-300">
+                      <p className="text-white text-xs font-body">{photo.caption}</p>
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Footer */}
         <div className="text-center mt-10">
           <div className="flex items-center justify-center gap-2 mb-2">
@@ -294,6 +354,31 @@ const InvitePage: React.FC = () => {
             Created with <span className="text-gold font-semibold">DreamFlower Invitations</span>
           </p>
         </div>
+
+        {/* Lightbox */}
+        {lightboxPhoto && (
+          <div
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setLightboxPhoto(null)}
+          >
+            <div className="relative max-w-3xl w-full" onClick={(e) => e.stopPropagation()}>
+              <img
+                src={lightboxPhoto.url}
+                alt={lightboxPhoto.caption || "Wedding photo"}
+                className="w-full rounded-2xl shadow-2xl max-h-[85vh] object-contain"
+              />
+              {lightboxPhoto.caption && (
+                <p className="text-white/80 text-sm font-body text-center mt-3">{lightboxPhoto.caption}</p>
+              )}
+              <button
+                onClick={() => setLightboxPhoto(null)}
+                className="absolute -top-4 -right-4 w-10 h-10 bg-card rounded-full flex items-center justify-center shadow-lg text-foreground hover:bg-muted transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

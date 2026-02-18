@@ -12,6 +12,7 @@ import GuestsPage from "./pages/GuestsPage";
 import TablesPage from "./pages/TablesPage";
 import InvitePage from "./pages/InvitePage";
 import AdminPage from "./pages/AdminPage";
+import GalleryPage from "./pages/GalleryPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -48,6 +49,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <TablesPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/dashboard/gallery"
+              element={
+                <ProtectedRoute>
+                  <GalleryPage />
                 </ProtectedRoute>
               }
             />

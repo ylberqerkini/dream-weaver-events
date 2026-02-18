@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  Flower, LayoutDashboard, Users, Table2, LogOut, Menu, X, ChevronRight, Crown
+  Flower, LayoutDashboard, Users, Table2, LogOut, Menu, X, ChevronRight, Crown, Images
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -49,6 +49,7 @@ const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ children }) 
       ? [
           { href: `/dashboard/guests/${eventId}`, label: "Guests", icon: Users },
           { href: `/dashboard/tables/${eventId}`, label: "Seating Tables", icon: Table2 },
+          { href: `/dashboard/gallery`, label: "Photo Gallery", icon: Images },
         ]
       : []),
     ...(isAdmin ? [{ href: "/admin", label: "Admin Panel", icon: Crown }] : []),
