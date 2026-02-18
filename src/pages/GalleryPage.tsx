@@ -43,11 +43,10 @@ const GalleryPage: React.FC = () => {
       .from("events")
       .select("id, event_name, slug")
       .eq("user_id", user.id)
-      .limit(1)
-      .single();
-    if (data) {
-      setEvent(data);
-      fetchPhotos(data.id);
+      .limit(1);
+    if (data && data.length > 0) {
+      setEvent(data[0]);
+      fetchPhotos(data[0].id);
     } else {
       setLoading(false);
     }

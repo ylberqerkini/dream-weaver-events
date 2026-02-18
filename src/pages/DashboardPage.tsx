@@ -52,11 +52,10 @@ const DashboardPage: React.FC = () => {
       .from("events")
       .select("*")
       .eq("user_id", user.id)
-      .limit(1)
-      .single();
-    if (data) {
-      setEvent(data);
-      fetchStats(data.id);
+      .limit(1);
+    if (data && data.length > 0) {
+      setEvent(data[0]);
+      fetchStats(data[0].id);
     }
     setLoading(false);
   };
