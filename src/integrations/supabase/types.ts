@@ -14,6 +14,41 @@ export type Database = {
   }
   public: {
     Tables: {
+      event_photos: {
+        Row: {
+          caption: string | null
+          created_at: string
+          display_order: number
+          event_id: string
+          id: string
+          storage_path: string
+        }
+        Insert: {
+          caption?: string | null
+          created_at?: string
+          display_order?: number
+          event_id: string
+          id?: string
+          storage_path: string
+        }
+        Update: {
+          caption?: string | null
+          created_at?: string
+          display_order?: number
+          event_id?: string
+          id?: string
+          storage_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_photos_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       events: {
         Row: {
           bride_name: string
