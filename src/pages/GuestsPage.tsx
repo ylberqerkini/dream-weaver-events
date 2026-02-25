@@ -5,7 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import DashboardLayout from "@/components/DashboardLayout";
 import { toast } from "sonner";
 import {
-  Plus, Pencil, Trash2, Filter, Search, Loader2, X, Check, Clock, UserX
+  Plus, Pencil, Trash2, Filter, Search, Loader2, X, Check, Clock, UserX, MessageCircle
 } from "lucide-react";
 
 interface Guest {
@@ -38,6 +38,8 @@ const GuestsPage: React.FC = () => {
   const [filterSide, setFilterSide] = useState("all");
   const [showForm, setShowForm] = useState(false);
   const [editGuest, setEditGuest] = useState<Guest | null>(null);
+  const [eventSlug, setEventSlug] = useState<string | null>(null);
+  const [eventInfo, setEventInfo] = useState<{ bride_name: string; groom_name: string; event_date: string; location: string } | null>(null);
   const [formData, setFormData] = useState({
     full_name: "",
     phone: "",
@@ -67,10 +69,24 @@ const GuestsPage: React.FC = () => {
     if (data) setTables(data);
   }, [eventId, isValidId]);
 
+  const fetchEventInfo = useCallback(async () => {
+    if (!isValidId) return;
+    const { data } = await supabase
+      .from("events")
+      .select("slug, bride_name, groom_name, event_date, location")
+      .eq("id", eventId)
+      .single();
+    if (data) {
+      setEventSlug(data.slug);
+      setEventInfo({ bride_name: data.bride_name, groom_name: data.groom_name, event_date: data.event_date, location: data.location });
+    }
+  }, [eventId, isValidId]);
+
   useEffect(() => {
     fetchGuests();
     fetchTables();
-  }, [fetchGuests, fetchTables]);
+    fetchEventInfo();
+  }, [fetchGuests, fetchTables, fetchEventInfo]);
 
   const openAdd = () => {
     setEditGuest(null);
@@ -121,6 +137,14 @@ const GuestsPage: React.FC = () => {
     if (error) { toast.error(error.message); return; }
     toast.success("Guest removed");
     setGuests((prev) => prev.filter((g) => g.id !== id));
+  };
+
+  const sendWhatsApp = (guest: Guest) => {
+    if (!eventSlug || !eventInfo) return;
+    const link = `${window.location.origin}/invite/${eventSlug}`;
+    const message = `Hi ${guest.full_name}! 💒\n\nYou're invited to ${eventInfo.bride_name} & ${eventInfo.groom_name}'s wedding!\n\n📅 ${new Date(eventInfo.event_date).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}\n📍 ${eventInfo.location}\n\nPlease RSVP here: ${link}`;
+    const phone = guest.phone?.replace(/\D/g, "") || "";
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, "_blank");
   };
 
   const filtered = guests.filter((g) => {
@@ -246,7 +270,10 @@ const GuestsPage: React.FC = () => {
                         <td className="px-4 py-3 text-muted-foreground font-body text-sm">{table?.table_name || "—"}</td>
                         <td className="px-4 py-3">{statusBadge(guest.rsvp_status)}</td>
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5">
+                            <button onClick={() => sendWhatsApp(guest)} className="transition-colors p-1 rounded-md hover:bg-green-50" style={{ color: "#25D366" }} title="Send via WhatsApp">
+                              <MessageCircle size={15} />
+                            </button>
                             <button onClick={() => openEdit(guest)} className="text-muted-foreground hover:text-foreground transition-colors p-1">
                               <Pencil size={15} />
                             </button>
