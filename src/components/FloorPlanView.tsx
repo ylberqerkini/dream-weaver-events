@@ -1,5 +1,5 @@
 import React, { useRef, useState, useCallback, useEffect } from "react";
-import { X, Printer } from "lucide-react";
+import { X, Printer, ZoomIn, ZoomOut, Maximize } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 interface SeatingTable {
@@ -141,71 +141,173 @@ const TableTooltip: React.FC<{
   );
 };
 
+const MIN_ZOOM = 0.3;
+const MAX_ZOOM = 3;
+
 const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, onAssignGuest, onRefresh }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({});
   const [dragging, setDragging] = useState<{ id: string; offsetX: number; offsetY: number } | null>(null);
   const [tooltip, setTooltip] = useState<{ tableId: string; pos: { x: number; y: number } } | null>(null);
   const [canvasRect, setCanvasRect] = useState<DOMRect | null>(null);
 
+  // Zoom & pan state
+  const [scale, setScale] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [panning, setPanning] = useState<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
+
   useEffect(() => {
     setPositions(getInitialPositions(tables));
   }, [tables]);
 
   useEffect(() => {
-    const update = () => { if (canvasRef.current) setCanvasRect(canvasRef.current.getBoundingClientRect()); };
+    const update = () => { if (containerRef.current) setCanvasRect(containerRef.current.getBoundingClientRect()); };
     update();
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
   }, []);
 
+  // Mouse-to-canvas coordinate helper
+  const toCanvas = useCallback((clientX: number, clientY: number) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return { x: 0, y: 0 };
+    return {
+      x: (clientX - rect.left - pan.x) / scale,
+      y: (clientY - rect.top - pan.y) / scale,
+    };
+  }, [scale, pan]);
+
   const savePosition = useCallback(async (id: string, x: number, y: number) => {
     await supabase.from("seating_tables").update({ position_x: Math.round(x), position_y: Math.round(y) } as any).eq("id", id);
   }, []);
 
+  // Table drag handlers (in canvas coords)
   const handleMouseDown = useCallback((e: React.MouseEvent, id: string) => {
     if (e.button !== 0) return;
     e.preventDefault();
+    e.stopPropagation();
     setTooltip(null);
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
+    const canvas = toCanvas(e.clientX, e.clientY);
     const cur = positions[id] ?? { x: 0, y: 0 };
-    setDragging({ id, offsetX: e.clientX - rect.left - cur.x, offsetY: e.clientY - rect.top - cur.y });
-  }, [positions]);
+    setDragging({ id, offsetX: canvas.x - cur.x, offsetY: canvas.y - cur.y });
+  }, [positions, toCanvas]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    // Panning
+    if (panning) {
+      setPan({
+        x: panning.panX + (e.clientX - panning.startX),
+        y: panning.panY + (e.clientY - panning.startY),
+      });
+      return;
+    }
     if (!dragging) return;
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const x = Math.max(0, Math.min(CANVAS_W - TABLE_SIZE, e.clientX - rect.left - dragging.offsetX));
-    const y = Math.max(0, Math.min(CANVAS_H - TABLE_SIZE, e.clientY - rect.top - dragging.offsetY));
+    const canvas = toCanvas(e.clientX, e.clientY);
+    const x = Math.max(0, Math.min(CANVAS_W - TABLE_SIZE, canvas.x - dragging.offsetX));
+    const y = Math.max(0, Math.min(CANVAS_H - TABLE_SIZE, canvas.y - dragging.offsetY));
     setPositions((prev) => ({ ...prev, [dragging.id]: { x, y } }));
-  }, [dragging]);
+  }, [dragging, panning, toCanvas]);
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
+    if (panning) { setPanning(null); return; }
     if (!dragging) return;
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const x = Math.max(0, Math.min(CANVAS_W - TABLE_SIZE, e.clientX - rect.left - dragging.offsetX));
-    const y = Math.max(0, Math.min(CANVAS_H - TABLE_SIZE, e.clientY - rect.top - dragging.offsetY));
+    const canvas = toCanvas(e.clientX, e.clientY);
+    const x = Math.max(0, Math.min(CANVAS_W - TABLE_SIZE, canvas.x - dragging.offsetX));
+    const y = Math.max(0, Math.min(CANVAS_H - TABLE_SIZE, canvas.y - dragging.offsetY));
     setPositions((prev) => ({ ...prev, [dragging.id]: { x, y } }));
     savePosition(dragging.id, x, y);
     setDragging(null);
-  }, [dragging, savePosition]);
+  }, [dragging, panning, savePosition, toCanvas]);
+
+  // Canvas pan (middle-click or empty area drag)
+  const handleCanvasMouseDown = useCallback((e: React.MouseEvent) => {
+    // Middle click or right-click to pan
+    if (e.button === 1 || (e.button === 0 && e.target === canvasRef.current)) {
+      e.preventDefault();
+      setPanning({ startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y });
+    }
+  }, [pan]);
+
+  // Wheel zoom
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      const newScale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, scale * delta));
+      const ratio = newScale / scale;
+
+      setPan((prev) => ({
+        x: mouseX - ratio * (mouseX - prev.x),
+        y: mouseY - ratio * (mouseY - prev.y),
+      }));
+      setScale(newScale);
+    };
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
+  }, [scale]);
 
   const handleTableClick = useCallback((e: React.MouseEvent, id: string) => {
     if (dragging) return;
     const pos = positions[id] ?? { x: 0, y: 0 };
-    setTooltip((prev) => prev?.tableId === id ? null : { tableId: id, pos: { x: pos.x + TABLE_SIZE, y: pos.y } });
-  }, [dragging, positions]);
+    // Convert canvas position to screen position for tooltip
+    const screenX = pos.x * scale + pan.x + TABLE_SIZE * scale;
+    const screenY = pos.y * scale + pan.y;
+    setTooltip((prev) => prev?.tableId === id ? null : { tableId: id, pos: { x: screenX, y: screenY } });
+  }, [dragging, positions, scale, pan]);
+
+  const zoomIn = () => {
+    const newScale = Math.min(MAX_ZOOM, scale * 1.25);
+    const ratio = newScale / scale;
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) { setScale(newScale); return; }
+    const cx = rect.width / 2, cy = rect.height / 2;
+    setPan((p) => ({ x: cx - ratio * (cx - p.x), y: cy - ratio * (cy - p.y) }));
+    setScale(newScale);
+  };
+
+  const zoomOut = () => {
+    const newScale = Math.max(MIN_ZOOM, scale / 1.25);
+    const ratio = newScale / scale;
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) { setScale(newScale); return; }
+    const cx = rect.width / 2, cy = rect.height / 2;
+    setPan((p) => ({ x: cx - ratio * (cx - p.x), y: cy - ratio * (cy - p.y) }));
+    setScale(newScale);
+  };
+
+  const fitToView = () => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const scaleX = rect.width / CANVAS_W;
+    const scaleY = rect.height / CANVAS_H;
+    const fit = Math.min(scaleX, scaleY, 1) * 0.9;
+    setScale(fit);
+    setPan({ x: (rect.width - CANVAS_W * fit) / 2, y: (rect.height - CANVAS_H * fit) / 2 });
+  };
 
   const getTableGuests = (tableId: string) => guests.filter((g) => g.table_id === tableId);
   const unassignedGuests = guests.filter((g) => !g.table_id);
 
   const handlePrint = useCallback(() => {
     setTooltip(null);
-    setTimeout(() => window.print(), 100);
-  }, []);
+    // Reset zoom for print
+    const prevScale = scale;
+    const prevPan = pan;
+    setScale(1);
+    setPan({ x: 0, y: 0 });
+    setTimeout(() => {
+      window.print();
+      setScale(prevScale);
+      setPan(prevPan);
+    }, 100);
+  }, [scale, pan]);
 
   return (
     <>
@@ -224,23 +326,64 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
           #floor-plan-printable .no-print { display: none !important; }
         }
       `}</style>
-      <div id="floor-plan-printable" className="relative w-full rounded-2xl border border-border overflow-hidden" style={{ height: 560, background: "#ffffff" }}>
-        <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: `linear-gradient(hsl(0 0% 88%) 1px, transparent 1px), linear-gradient(90deg, hsl(0 0% 88%) 1px, transparent 1px)`, backgroundSize: "40px 40px" }} />
+      <div
+        id="floor-plan-printable"
+        ref={containerRef}
+        className="relative w-full rounded-2xl border border-border overflow-hidden"
+        style={{ height: 560, background: "#ffffff", cursor: panning ? "grabbing" : dragging ? "grabbing" : "default" }}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        onMouseDown={handleCanvasMouseDown}
+        onClick={() => setTooltip(null)}
+      >
+        {/* Grid rendered at scale */}
+        <div
+          className="absolute pointer-events-none"
+          style={{
+            width: CANVAS_W,
+            height: CANVAS_H,
+            transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
+            transformOrigin: "0 0",
+            backgroundImage: `linear-gradient(hsl(0 0% 88%) 1px, transparent 1px), linear-gradient(90deg, hsl(0 0% 88%) 1px, transparent 1px)`,
+            backgroundSize: "40px 40px",
+          }}
+        />
+
+        {/* Controls */}
         <div className="absolute top-3 right-3 z-10 flex items-start gap-2 no-print">
-          <button onClick={handlePrint} className="bg-card/90 backdrop-blur-sm border border-border rounded-xl p-2 text-muted-foreground hover:text-foreground transition-colors" title="Print floor plan">
-            <Printer size={16} />
-          </button>
+          <div className="flex flex-col gap-1">
+            <button onClick={zoomIn} className="bg-card/90 backdrop-blur-sm border border-border rounded-lg p-1.5 text-muted-foreground hover:text-foreground transition-colors" title="Zoom in"><ZoomIn size={15} /></button>
+            <button onClick={zoomOut} className="bg-card/90 backdrop-blur-sm border border-border rounded-lg p-1.5 text-muted-foreground hover:text-foreground transition-colors" title="Zoom out"><ZoomOut size={15} /></button>
+            <button onClick={fitToView} className="bg-card/90 backdrop-blur-sm border border-border rounded-lg p-1.5 text-muted-foreground hover:text-foreground transition-colors" title="Fit to view"><Maximize size={15} /></button>
+            <button onClick={handlePrint} className="bg-card/90 backdrop-blur-sm border border-border rounded-lg p-1.5 text-muted-foreground hover:text-foreground transition-colors" title="Print"><Printer size={15} /></button>
+          </div>
           <div className="bg-card/90 backdrop-blur-sm border border-border rounded-xl p-2.5 flex flex-col gap-1.5 text-xs font-body">
             <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full inline-block" style={{ background: "hsl(var(--gold))" }} /><span className="text-muted-foreground">Available</span></div>
             <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full inline-block" style={{ background: "hsl(38 92% 50%)" }} /><span className="text-muted-foreground">Almost full</span></div>
             <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full inline-block" style={{ background: "hsl(0 72% 51%)" }} /><span className="text-muted-foreground">Full</span></div>
           </div>
         </div>
-        {tables.length > 0 && <p className="absolute bottom-3 left-3 text-xs text-muted-foreground font-body z-10 bg-card/80 backdrop-blur-sm rounded-lg px-2 py-1 no-print">Drag to rearrange · Click to manage guests</p>}
+
+        {/* Zoom indicator */}
+        <div className="absolute bottom-3 right-3 z-10 bg-card/90 backdrop-blur-sm border border-border rounded-lg px-2 py-1 text-xs text-muted-foreground font-body no-print">
+          {Math.round(scale * 100)}%
+        </div>
+
+        {tables.length > 0 && <p className="absolute bottom-3 left-3 text-xs text-muted-foreground font-body z-10 bg-card/80 backdrop-blur-sm rounded-lg px-2 py-1 no-print">Drag tables · Scroll to zoom · Drag empty area to pan</p>}
         {tables.length === 0 && <div className="absolute inset-0 flex items-center justify-center"><p className="text-muted-foreground font-body text-sm">No tables yet — add one above</p></div>}
 
-      <div ref={canvasRef} className="relative w-full h-full overflow-auto" style={{ cursor: dragging ? "grabbing" : "default" }} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onClick={() => setTooltip(null)}>
-        <div style={{ width: CANVAS_W, height: CANVAS_H, position: "relative" }}>
+        {/* Scaled canvas */}
+        <div
+          ref={canvasRef}
+          style={{
+            width: CANVAS_W,
+            height: CANVAS_H,
+            position: "absolute",
+            transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
+            transformOrigin: "0 0",
+          }}
+        >
           {tables.map((table) => {
             const pos = positions[table.id] ?? { x: 0, y: 0 };
             const tableGuests = getTableGuests(table.id);
@@ -251,13 +394,14 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
               </div>
             );
           })}
-          {tooltip && (() => {
-            const table = tables.find((t) => t.id === tooltip.tableId);
-            if (!table) return null;
-            return <TableTooltip table={table} tableGuests={getTableGuests(table.id)} unassignedGuests={unassignedGuests} onAssign={onAssignGuest} onClose={() => setTooltip(null)} pos={tooltip.pos} canvasRect={canvasRect} />;
-          })()}
         </div>
-      </div>
+
+        {/* Tooltip (screen-space) */}
+        {tooltip && (() => {
+          const table = tables.find((t) => t.id === tooltip.tableId);
+          if (!table) return null;
+          return <TableTooltip table={table} tableGuests={getTableGuests(table.id)} unassignedGuests={unassignedGuests} onAssign={onAssignGuest} onClose={() => setTooltip(null)} pos={tooltip.pos} canvasRect={canvasRect} />;
+        })()}
       </div>
     </>
   );
