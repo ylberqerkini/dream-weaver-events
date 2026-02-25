@@ -27,8 +27,8 @@ interface FloorPlanViewProps {
   onRefresh: () => void;
 }
 
-const LANDSCAPE = { w: 1200, h: 800 };
-const PORTRAIT = { w: 800, h: 1200 };
+const LANDSCAPE = { w: 1122, h: 793 };  // A4 landscape ratio (297×210mm)
+const PORTRAIT = { w: 793, h: 1122 };   // A4 portrait ratio (210×297mm)
 const TABLE_SIZE = 100;
 
 function getInitialPositions(tables: SeatingTable[], canvasW: number, canvasH: number): Record<string, { x: number; y: number }> {
@@ -366,7 +366,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
         id="floor-plan-printable"
         ref={containerRef}
         className="relative w-full rounded-2xl border border-border overflow-hidden"
-        style={{ height: orientation === "landscape" ? 560 : 700, background: "#ffffff", cursor: panning ? "grabbing" : dragging ? "grabbing" : "default" }}
+        style={{ height: orientation === "landscape" ? 560 : 750, background: "#ffffff", cursor: panning ? "grabbing" : dragging ? "grabbing" : "default" }}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
