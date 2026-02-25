@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import DashboardLayout from "@/components/DashboardLayout";
 import { toast } from "sonner";
 import {
-  Users, CheckCircle, Clock, XCircle, Plus, Copy, ExternalLink, Loader2, Flower, Images, MessageCircle
+  Users, CheckCircle, Clock, XCircle, Plus, Copy, ExternalLink, Loader2, Flower, Images, MessageCircle, Pencil, X
 } from "lucide-react";
 
 interface EventData {
@@ -35,6 +35,8 @@ const DashboardPage: React.FC = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [purchaseLoading, setPurchaseLoading] = useState(false);
   const [showEventForm, setShowEventForm] = useState(false);
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
   const [form, setForm] = useState({
     event_name: "",
     bride_name: "",
@@ -94,7 +96,6 @@ const DashboardPage: React.FC = () => {
       return;
     }
     setPurchaseLoading(true);
-    // Skip mock payment for admins
     if (!isAdmin) {
       await new Promise((r) => setTimeout(r, 1500));
     }
@@ -137,6 +138,47 @@ const DashboardPage: React.FC = () => {
     const link = `${window.location.origin}/invite/${event.slug}`;
     const message = `💒 You're invited to ${event.bride_name} & ${event.groom_name}'s wedding!\n\n📅 ${new Date(event.event_date).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}\n📍 ${event.location}\n\nRSVP here: ${link}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank");
+  };
+
+  const openEditForm = () => {
+    if (!event) return;
+    setForm({
+      event_name: event.event_name,
+      bride_name: event.bride_name,
+      groom_name: event.groom_name,
+      event_date: event.event_date,
+      location: event.location,
+    });
+    setShowEditForm(true);
+  };
+
+  const handleUpdateEvent = async () => {
+    if (!event || !user) return;
+    if (!form.event_name || !form.bride_name || !form.groom_name || !form.event_date || !form.location) {
+      toast.error("Please fill in all fields");
+      return;
+    }
+    setEditSaving(true);
+    const { data, error } = await supabase
+      .from("events")
+      .update({
+        event_name: form.event_name,
+        bride_name: form.bride_name,
+        groom_name: form.groom_name,
+        event_date: form.event_date,
+        location: form.location,
+      })
+      .eq("id", event.id)
+      .select()
+      .single();
+    setEditSaving(false);
+    if (error) {
+      toast.error("Failed to update: " + error.message);
+      return;
+    }
+    toast.success("Invitation updated! ✨");
+    setEvent(data);
+    setShowEditForm(false);
   };
 
   const statsCards = [
@@ -300,6 +342,13 @@ const DashboardPage: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <button
+                    onClick={openEditForm}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl border border-border text-foreground text-sm font-semibold font-body hover:bg-muted transition-all"
+                  >
+                    <Pencil size={14} />
+                    Edit
+                  </button>
+                  <button
                     onClick={copyLink}
                     className="flex items-center gap-2 px-4 py-2 rounded-xl border border-border text-foreground text-sm font-semibold font-body hover:bg-muted transition-all"
                   >
@@ -378,6 +427,48 @@ const DashboardPage: React.FC = () => {
           </>
         )}
       </div>
+
+      {/* Edit Event Modal */}
+      {showEditForm && (
+        <div className="fixed inset-0 bg-foreground/30 z-50 flex items-center justify-center p-4">
+          <div className="bg-card rounded-2xl shadow-card border border-border p-6 w-full max-w-lg animate-fade-up">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="font-display text-xl">Edit Invitation</h2>
+              <button onClick={() => setShowEditForm(false)} className="text-muted-foreground hover:text-foreground"><X size={20} /></button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold mb-1.5">Event Name</label>
+                <input value={form.event_name} onChange={(e) => setForm({ ...form, event_name: e.target.value })} placeholder="Our Wedding Day" className="w-full px-4 py-3 rounded-xl border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring transition-all" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold mb-1.5">Bride's Name</label>
+                  <input value={form.bride_name} onChange={(e) => setForm({ ...form, bride_name: e.target.value })} placeholder="Sofia" className="w-full px-4 py-3 rounded-xl border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring transition-all" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-1.5">Groom's Name</label>
+                  <input value={form.groom_name} onChange={(e) => setForm({ ...form, groom_name: e.target.value })} placeholder="Alessandro" className="w-full px-4 py-3 rounded-xl border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring transition-all" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold mb-1.5">Event Date</label>
+                <input type="date" value={form.event_date} onChange={(e) => setForm({ ...form, event_date: e.target.value })} className="w-full px-4 py-3 rounded-xl border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring transition-all" />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold mb-1.5">Location</label>
+                <input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="Villa Rossi, Rome, Italy" className="w-full px-4 py-3 rounded-xl border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring transition-all" />
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button onClick={() => setShowEditForm(false)} className="flex-1 py-3 rounded-xl border border-border text-foreground font-semibold font-body hover:bg-muted transition-all">Cancel</button>
+              <button onClick={handleUpdateEvent} disabled={editSaving} className="flex-1 py-3 rounded-xl gradient-gold text-primary-foreground font-semibold font-body shadow-gold hover:opacity-90 transition-all disabled:opacity-60 flex items-center justify-center gap-2">
+                {editSaving ? <><Loader2 size={16} className="animate-spin" /> Saving...</> : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 };
