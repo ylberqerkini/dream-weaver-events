@@ -1,5 +1,5 @@
 import React, { useRef, useState, useCallback, useEffect } from "react";
-import { X, Printer, ZoomIn, ZoomOut, Maximize } from "lucide-react";
+import { X, Printer, ZoomIn, ZoomOut, Maximize, RectangleHorizontal, RectangleVertical } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 interface SeatingTable {
@@ -27,17 +27,21 @@ interface FloorPlanViewProps {
   onRefresh: () => void;
 }
 
-const CANVAS_W = 1200;
-const CANVAS_H = 800;
+const LANDSCAPE = { w: 1200, h: 800 };
+const PORTRAIT = { w: 800, h: 1200 };
 const TABLE_SIZE = 100;
 
-function getInitialPositions(tables: SeatingTable[]): Record<string, { x: number; y: number }> {
+function getInitialPositions(tables: SeatingTable[], canvasW: number, canvasH: number): Record<string, { x: number; y: number }> {
   const positions: Record<string, { x: number; y: number }> = {};
   tables.forEach((t, i) => {
     if (t.position_x || t.position_y) {
-      positions[t.id] = { x: t.position_x, y: t.position_y };
+      // Clamp to canvas bounds
+      positions[t.id] = {
+        x: Math.min(t.position_x, canvasW - TABLE_SIZE),
+        y: Math.min(t.position_y, canvasH - TABLE_SIZE),
+      };
     } else {
-      const cols = 5;
+      const cols = Math.floor(canvasW / 180);
       positions[t.id] = { x: 80 + (i % cols) * 180, y: 80 + Math.floor(i / cols) * 180 };
     }
   });
@@ -151,6 +155,11 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
   const [dragging, setDragging] = useState<{ id: string; offsetX: number; offsetY: number } | null>(null);
   const [tooltip, setTooltip] = useState<{ tableId: string; pos: { x: number; y: number } } | null>(null);
   const [canvasRect, setCanvasRect] = useState<DOMRect | null>(null);
+  const [orientation, setOrientation] = useState<"landscape" | "portrait">("landscape");
+
+  const canvas = orientation === "landscape" ? LANDSCAPE : PORTRAIT;
+  const CANVAS_W = canvas.w;
+  const CANVAS_H = canvas.h;
 
   // Zoom & pan state
   const [scale, setScale] = useState(1);
@@ -158,8 +167,8 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
   const [panning, setPanning] = useState<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
 
   useEffect(() => {
-    setPositions(getInitialPositions(tables));
-  }, [tables]);
+    setPositions(getInitialPositions(tables, CANVAS_W, CANVAS_H));
+  }, [tables, CANVAS_W, CANVAS_H]);
 
   useEffect(() => {
     const update = () => { if (containerRef.current) setCanvasRect(containerRef.current.getBoundingClientRect()); };
@@ -168,68 +177,56 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
     return () => window.removeEventListener("resize", update);
   }, []);
 
-  // Mouse-to-canvas coordinate helper
   const toCanvas = useCallback((clientX: number, clientY: number) => {
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return { x: 0, y: 0 };
-    return {
-      x: (clientX - rect.left - pan.x) / scale,
-      y: (clientY - rect.top - pan.y) / scale,
-    };
+    return { x: (clientX - rect.left - pan.x) / scale, y: (clientY - rect.top - pan.y) / scale };
   }, [scale, pan]);
 
   const savePosition = useCallback(async (id: string, x: number, y: number) => {
     await supabase.from("seating_tables").update({ position_x: Math.round(x), position_y: Math.round(y) } as any).eq("id", id);
   }, []);
 
-  // Table drag handlers (in canvas coords)
   const handleMouseDown = useCallback((e: React.MouseEvent, id: string) => {
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
     setTooltip(null);
-    const canvas = toCanvas(e.clientX, e.clientY);
+    const c = toCanvas(e.clientX, e.clientY);
     const cur = positions[id] ?? { x: 0, y: 0 };
-    setDragging({ id, offsetX: canvas.x - cur.x, offsetY: canvas.y - cur.y });
+    setDragging({ id, offsetX: c.x - cur.x, offsetY: c.y - cur.y });
   }, [positions, toCanvas]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    // Panning
     if (panning) {
-      setPan({
-        x: panning.panX + (e.clientX - panning.startX),
-        y: panning.panY + (e.clientY - panning.startY),
-      });
+      setPan({ x: panning.panX + (e.clientX - panning.startX), y: panning.panY + (e.clientY - panning.startY) });
       return;
     }
     if (!dragging) return;
-    const canvas = toCanvas(e.clientX, e.clientY);
-    const x = Math.max(0, Math.min(CANVAS_W - TABLE_SIZE, canvas.x - dragging.offsetX));
-    const y = Math.max(0, Math.min(CANVAS_H - TABLE_SIZE, canvas.y - dragging.offsetY));
+    const c = toCanvas(e.clientX, e.clientY);
+    const x = Math.max(0, Math.min(CANVAS_W - TABLE_SIZE, c.x - dragging.offsetX));
+    const y = Math.max(0, Math.min(CANVAS_H - TABLE_SIZE, c.y - dragging.offsetY));
     setPositions((prev) => ({ ...prev, [dragging.id]: { x, y } }));
-  }, [dragging, panning, toCanvas]);
+  }, [dragging, panning, toCanvas, CANVAS_W, CANVAS_H]);
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
     if (panning) { setPanning(null); return; }
     if (!dragging) return;
-    const canvas = toCanvas(e.clientX, e.clientY);
-    const x = Math.max(0, Math.min(CANVAS_W - TABLE_SIZE, canvas.x - dragging.offsetX));
-    const y = Math.max(0, Math.min(CANVAS_H - TABLE_SIZE, canvas.y - dragging.offsetY));
+    const c = toCanvas(e.clientX, e.clientY);
+    const x = Math.max(0, Math.min(CANVAS_W - TABLE_SIZE, c.x - dragging.offsetX));
+    const y = Math.max(0, Math.min(CANVAS_H - TABLE_SIZE, c.y - dragging.offsetY));
     setPositions((prev) => ({ ...prev, [dragging.id]: { x, y } }));
     savePosition(dragging.id, x, y);
     setDragging(null);
-  }, [dragging, panning, savePosition, toCanvas]);
+  }, [dragging, panning, savePosition, toCanvas, CANVAS_W, CANVAS_H]);
 
-  // Canvas pan (middle-click or empty area drag)
   const handleCanvasMouseDown = useCallback((e: React.MouseEvent) => {
-    // Middle click or right-click to pan
     if (e.button === 1 || (e.button === 0 && e.target === canvasRef.current)) {
       e.preventDefault();
       setPanning({ startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y });
     }
   }, [pan]);
 
-  // Wheel zoom
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -238,15 +235,10 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
       const rect = el.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
-
       const delta = e.deltaY > 0 ? 0.9 : 1.1;
       const newScale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, scale * delta));
       const ratio = newScale / scale;
-
-      setPan((prev) => ({
-        x: mouseX - ratio * (mouseX - prev.x),
-        y: mouseY - ratio * (mouseY - prev.y),
-      }));
+      setPan((prev) => ({ x: mouseX - ratio * (mouseX - prev.x), y: mouseY - ratio * (mouseY - prev.y) }));
       setScale(newScale);
     };
     el.addEventListener("wheel", handler, { passive: false });
@@ -256,7 +248,6 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
   const handleTableClick = useCallback((e: React.MouseEvent, id: string) => {
     if (dragging) return;
     const pos = positions[id] ?? { x: 0, y: 0 };
-    // Convert canvas position to screen position for tooltip
     const screenX = pos.x * scale + pan.x + TABLE_SIZE * scale;
     const screenY = pos.y * scale + pan.y;
     setTooltip((prev) => prev?.tableId === id ? null : { tableId: id, pos: { x: screenX, y: screenY } });
@@ -292,12 +283,18 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
     setPan({ x: (rect.width - CANVAS_W * fit) / 2, y: (rect.height - CANVAS_H * fit) / 2 });
   };
 
+  const toggleOrientation = () => {
+    setOrientation((o) => o === "landscape" ? "portrait" : "landscape");
+    setScale(1);
+    setPan({ x: 0, y: 0 });
+    setTooltip(null);
+  };
+
   const getTableGuests = (tableId: string) => guests.filter((g) => g.table_id === tableId);
   const unassignedGuests = guests.filter((g) => !g.table_id);
 
   const handlePrint = useCallback(() => {
     setTooltip(null);
-    // Reset zoom for print
     const prevScale = scale;
     const prevPan = pan;
     setScale(1);
@@ -313,7 +310,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
     <>
       <style>{`
         @media print {
-          @page { size: A4 landscape; margin: 10mm; }
+          @page { size: A4 ${orientation}; margin: 10mm; }
           body * { visibility: hidden !important; }
           #floor-plan-printable, #floor-plan-printable * { visibility: visible !important; }
           #floor-plan-printable {
@@ -330,19 +327,17 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
         id="floor-plan-printable"
         ref={containerRef}
         className="relative w-full rounded-2xl border border-border overflow-hidden"
-        style={{ height: 560, background: "#ffffff", cursor: panning ? "grabbing" : dragging ? "grabbing" : "default" }}
+        style={{ height: orientation === "landscape" ? 560 : 700, background: "#ffffff", cursor: panning ? "grabbing" : dragging ? "grabbing" : "default" }}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
         onMouseDown={handleCanvasMouseDown}
         onClick={() => setTooltip(null)}
       >
-        {/* Grid rendered at scale */}
         <div
           className="absolute pointer-events-none"
           style={{
-            width: CANVAS_W,
-            height: CANVAS_H,
+            width: CANVAS_W, height: CANVAS_H,
             transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
             transformOrigin: "0 0",
             backgroundImage: `linear-gradient(hsl(0 0% 88%) 1px, transparent 1px), linear-gradient(90deg, hsl(0 0% 88%) 1px, transparent 1px)`,
@@ -356,6 +351,9 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
             <button onClick={zoomIn} className="bg-card/90 backdrop-blur-sm border border-border rounded-lg p-1.5 text-muted-foreground hover:text-foreground transition-colors" title="Zoom in"><ZoomIn size={15} /></button>
             <button onClick={zoomOut} className="bg-card/90 backdrop-blur-sm border border-border rounded-lg p-1.5 text-muted-foreground hover:text-foreground transition-colors" title="Zoom out"><ZoomOut size={15} /></button>
             <button onClick={fitToView} className="bg-card/90 backdrop-blur-sm border border-border rounded-lg p-1.5 text-muted-foreground hover:text-foreground transition-colors" title="Fit to view"><Maximize size={15} /></button>
+            <button onClick={toggleOrientation} className="bg-card/90 backdrop-blur-sm border border-border rounded-lg p-1.5 text-muted-foreground hover:text-foreground transition-colors" title={`Switch to ${orientation === "landscape" ? "portrait" : "landscape"}`}>
+              {orientation === "landscape" ? <RectangleVertical size={15} /> : <RectangleHorizontal size={15} />}
+            </button>
             <button onClick={handlePrint} className="bg-card/90 backdrop-blur-sm border border-border rounded-lg p-1.5 text-muted-foreground hover:text-foreground transition-colors" title="Print"><Printer size={15} /></button>
           </div>
           <div className="bg-card/90 backdrop-blur-sm border border-border rounded-xl p-2.5 flex flex-col gap-1.5 text-xs font-body">
@@ -365,20 +363,20 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
           </div>
         </div>
 
-        {/* Zoom indicator */}
-        <div className="absolute bottom-3 right-3 z-10 bg-card/90 backdrop-blur-sm border border-border rounded-lg px-2 py-1 text-xs text-muted-foreground font-body no-print">
-          {Math.round(scale * 100)}%
+        {/* Zoom & orientation indicator */}
+        <div className="absolute bottom-3 right-3 z-10 bg-card/90 backdrop-blur-sm border border-border rounded-lg px-2 py-1 text-xs text-muted-foreground font-body no-print flex items-center gap-2">
+          <span className="capitalize">{orientation}</span>
+          <span>·</span>
+          <span>{Math.round(scale * 100)}%</span>
         </div>
 
         {tables.length > 0 && <p className="absolute bottom-3 left-3 text-xs text-muted-foreground font-body z-10 bg-card/80 backdrop-blur-sm rounded-lg px-2 py-1 no-print">Drag tables · Scroll to zoom · Drag empty area to pan</p>}
         {tables.length === 0 && <div className="absolute inset-0 flex items-center justify-center"><p className="text-muted-foreground font-body text-sm">No tables yet — add one above</p></div>}
 
-        {/* Scaled canvas */}
         <div
           ref={canvasRef}
           style={{
-            width: CANVAS_W,
-            height: CANVAS_H,
+            width: CANVAS_W, height: CANVAS_H,
             position: "absolute",
             transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
             transformOrigin: "0 0",
@@ -396,7 +394,6 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
           })}
         </div>
 
-        {/* Tooltip (screen-space) */}
         {tooltip && (() => {
           const table = tables.find((t) => t.id === tooltip.tableId);
           if (!table) return null;
