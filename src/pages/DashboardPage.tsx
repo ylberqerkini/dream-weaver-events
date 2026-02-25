@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import DashboardLayout from "@/components/DashboardLayout";
 import { toast } from "sonner";
 import {
-  Users, CheckCircle, Clock, XCircle, Plus, Copy, ExternalLink, Loader2, Flower, Images
+  Users, CheckCircle, Clock, XCircle, Plus, Copy, ExternalLink, Loader2, Flower, Images, MessageCircle
 } from "lucide-react";
 
 interface EventData {
@@ -130,6 +130,13 @@ const DashboardPage: React.FC = () => {
     const link = `${window.location.origin}/invite/${event?.slug}`;
     navigator.clipboard.writeText(link);
     toast.success("Invite link copied to clipboard!");
+  };
+
+  const shareWhatsApp = () => {
+    if (!event) return;
+    const link = `${window.location.origin}/invite/${event.slug}`;
+    const message = `💒 You're invited to ${event.bride_name} & ${event.groom_name}'s wedding!\n\n📅 ${new Date(event.event_date).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}\n📍 ${event.location}\n\nRSVP here: ${link}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank");
   };
 
   const statsCards = [
@@ -291,13 +298,21 @@ const DashboardPage: React.FC = () => {
                   </p>
                   <p className="text-muted-foreground font-body text-sm">{event.location}</p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <button
                     onClick={copyLink}
                     className="flex items-center gap-2 px-4 py-2 rounded-xl border border-border text-foreground text-sm font-semibold font-body hover:bg-muted transition-all"
                   >
                     <Copy size={14} />
                     Copy Link
+                  </button>
+                  <button
+                    onClick={shareWhatsApp}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold font-body transition-all"
+                    style={{ background: "#25D366", color: "#fff" }}
+                  >
+                    <MessageCircle size={14} />
+                    WhatsApp
                   </button>
                   <a
                     href={`/invite/${event.slug}`}
