@@ -64,6 +64,22 @@ const TableSVG: React.FC<{
     pct >= 1 ? "hsl(0 72% 51%)" : pct >= 0.8 ? "hsl(38 92% 50%)" : "hsl(var(--gold))";
 
   const getSeatPositions = () => {
+    if (shape === "head") {
+      const seats: { x: number; y: number }[] = [];
+      // Two special seats (bride & groom) at center back
+      seats.push({ x: 40, y: 25 });
+      seats.push({ x: 60, y: 25 });
+      // Remaining along the front
+      const remaining = capacity - 2;
+      if (remaining > 0) {
+        const gap = Math.min(14, 80 / (remaining + 1));
+        const totalW = (remaining - 1) * gap;
+        for (let i = 0; i < remaining; i++) {
+          seats.push({ x: 50 - totalW / 2 + i * gap, y: 75 });
+        }
+      }
+      return seats;
+    }
     if (shape === "round") {
       const r = 30;
       return Array.from({ length: capacity }, (_, i) => {
@@ -82,7 +98,8 @@ const TableSVG: React.FC<{
   };
 
   const seats = getSeatPositions();
-  const seatRadius = shape === "round" ? 7 : 6;
+  const seatRadius = shape === "head" ? 7 : shape === "round" ? 7 : 6;
+  const isHead = shape === "head";
 
   return (
     <svg viewBox="0 0 100 100" width={size} height={size}>
@@ -90,10 +107,14 @@ const TableSVG: React.FC<{
         const isOccupied = i < occupied;
         const guest = tableGuests[i];
         const canAssign = !isOccupied && unassignedGuests.length > 0;
+        const isSpecialSeat = isHead && i < 2;
         return (
           <g key={i} style={{ cursor: (isOccupied || canAssign) ? "pointer" : "default" }} onClick={(e) => { e.stopPropagation(); if (isOccupied || canAssign) onSeatClick(i); }}>
-            <circle cx={s.x} cy={s.y} r={seatRadius} fill={isOccupied ? tableColor : canAssign ? "hsl(var(--muted))" : "hsl(var(--muted))"} stroke={canAssign && !isOccupied ? "hsl(var(--gold))" : "hsl(var(--border))"} strokeWidth={canAssign && !isOccupied ? "1.8" : "1.2"} opacity={isOccupied ? 1 : canAssign ? 0.7 : 0.35} />
-            {canAssign && !isOccupied && (
+            <circle cx={s.x} cy={s.y} r={isSpecialSeat ? 9 : seatRadius} fill={isOccupied ? (isSpecialSeat ? "hsl(var(--gold))" : tableColor) : canAssign ? "hsl(var(--muted))" : "hsl(var(--muted))"} stroke={isSpecialSeat ? tableColor : canAssign && !isOccupied ? "hsl(var(--gold))" : "hsl(var(--border))"} strokeWidth={isSpecialSeat ? "2" : canAssign && !isOccupied ? "1.8" : "1.2"} opacity={isOccupied ? 1 : canAssign ? 0.7 : 0.35} />
+            {isSpecialSeat && (
+              <text x={s.x} y={s.y + 1.5} textAnchor="middle" fontSize="5" fill={isOccupied ? "hsl(var(--primary-foreground))" : "hsl(var(--muted-foreground))"} style={{ pointerEvents: "none" }}>♥</text>
+            )}
+            {canAssign && !isOccupied && !isSpecialSeat && (
               <text x={s.x} y={s.y + 1.5} textAnchor="middle" fontSize="6" fill="hsl(var(--gold))" fontWeight="bold" style={{ pointerEvents: "none" }}>+</text>
             )}
             {isOccupied && guest && (
@@ -102,12 +123,17 @@ const TableSVG: React.FC<{
           </g>
         );
       })}
-      {shape === "round" ? (
+      {shape === "head" ? (
+        <>
+          <rect x="15" y="35" width="70" height="20" rx="6" fill="hsl(var(--champagne))" stroke={tableColor} strokeWidth="2.5" />
+          <text x="50" y="49" textAnchor="middle" fontSize="6" fill={tableColor} style={{ pointerEvents: "none" }}>♥</text>
+        </>
+      ) : shape === "round" ? (
         <circle cx="50" cy="50" r="20" fill="hsl(var(--champagne))" stroke={tableColor} strokeWidth="2.5" />
       ) : (
         <rect x={50 - 16} y={50 - 16} width={32} height={32} rx="4" fill="hsl(var(--champagne))" stroke={tableColor} strokeWidth="2.5" />
       )}
-      <text x="50" y="54" textAnchor="middle" fontSize="7" fontFamily="'Playfair Display', serif" fill="hsl(var(--foreground))">
+      <text x="50" y={shape === "head" ? "46" : "54"} textAnchor="middle" fontSize="7" fontFamily="'Playfair Display', serif" fill="hsl(var(--foreground))">
         {label.length > 8 ? label.slice(0, 7) + "…" : label}
       </text>
     </svg>

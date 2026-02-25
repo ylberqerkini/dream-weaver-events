@@ -63,6 +63,40 @@ const SquareTableView: React.FC<{ capacity: number; occupied: number; label: str
   );
 };
 
+/* ─── Top-view bride & groom head table ─── */
+const HeadTableView: React.FC<{ capacity: number; occupied: number; label: string }> = ({ capacity, occupied, label }) => {
+  const pct = capacity > 0 ? occupied / capacity : 0;
+  const tableColor = pct >= 1 ? "hsl(0 72% 51%)" : pct >= 0.8 ? "hsl(38 92% 50%)" : "hsl(var(--gold))";
+  const seats: { x: number; y: number; isSpecial: boolean }[] = [];
+  // Two special seats (bride & groom) at center back
+  seats.push({ x: 65, y: 50, isSpecial: true });
+  seats.push({ x: 95, y: 50, isSpecial: true });
+  // Remaining seats along the front
+  const remaining = capacity - 2;
+  if (remaining > 0) {
+    const gap = Math.min(20, 120 / (remaining + 1));
+    const totalW = (remaining - 1) * gap;
+    for (let i = 0; i < remaining; i++) {
+      seats.push({ x: 80 - totalW / 2 + i * gap, y: 110, isSpecial: false });
+    }
+  }
+  return (
+    <svg viewBox="0 0 160 160" className="w-full h-full">
+      {/* Elongated table */}
+      <rect x="30" y="60" width="100" height="35" rx="8" fill="hsl(var(--champagne))" stroke={tableColor} strokeWidth="3" />
+      {/* Heart decoration */}
+      <text x="80" y="82" textAnchor="middle" fontSize="11" fill={tableColor}>♥</text>
+      <text x="80" y="72" textAnchor="middle" fontSize="7" fontFamily="'Playfair Display', serif" fill="hsl(var(--foreground))">{label.length > 12 ? label.slice(0, 11) + "…" : label}</text>
+      {seats.map((s, i) => (
+        <g key={i}>
+          <circle cx={s.x} cy={s.y} r={s.isSpecial ? 12 : 9} fill={i < occupied ? (s.isSpecial ? "hsl(var(--gold))" : tableColor) : "hsl(var(--muted))"} stroke={s.isSpecial ? tableColor : "hsl(var(--border))"} strokeWidth={s.isSpecial ? "2.5" : "1.5"} opacity={i < occupied ? 1 : 0.5} />
+          {s.isSpecial && <text x={s.x} y={s.y + 1} textAnchor="middle" fontSize="7" fill={i < occupied ? "hsl(var(--primary-foreground))" : "hsl(var(--muted-foreground))"} style={{ pointerEvents: "none" }}>♥</text>}
+        </g>
+      ))}
+    </svg>
+  );
+};
+
 const TablesPage: React.FC = () => {
   const { eventId } = useParams<{ eventId: string }>();
   const isValidId = !!eventId && UUID_REGEX.test(eventId);
@@ -70,7 +104,7 @@ const TablesPage: React.FC = () => {
   const [guests, setGuests] = useState<Guest[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ table_name: "", capacity: "8", shape: "round" as "round" | "square" });
+  const [form, setForm] = useState({ table_name: "", capacity: "8", shape: "round" as "round" | "square" | "head" });
   const [saving, setSaving] = useState(false);
   const [view, setView] = useState<"grid" | "floorplan">("grid");
 
@@ -101,7 +135,7 @@ const TablesPage: React.FC = () => {
     setSaving(false);
     if (error) { toast.error(error.message); return; }
     toast.success("Table created!");
-    setForm({ table_name: "", capacity: "8", shape: "round" });
+    setForm({ table_name: "", capacity: "8", shape: "round" as "round" | "square" | "head" });
     setShowForm(false);
     fetchData();
   };
@@ -168,7 +202,9 @@ const TablesPage: React.FC = () => {
               return (
                 <div key={table.id} className="bg-card rounded-2xl shadow-card border border-border p-5 flex flex-col gap-3">
                   <div className="relative w-full aspect-square max-w-[160px] mx-auto">
-                    {table.shape === "square" ? (
+                    {table.shape === "head" ? (
+                      <HeadTableView capacity={table.capacity} occupied={occupied} label={table.table_name} />
+                    ) : table.shape === "square" ? (
                       <SquareTableView capacity={table.capacity} occupied={occupied} label={table.table_name} />
                     ) : (
                       <RoundTableView capacity={table.capacity} occupied={occupied} label={table.table_name} />
@@ -223,16 +259,16 @@ const TablesPage: React.FC = () => {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-semibold mb-2">Table Shape</label>
-                <div className="grid grid-cols-2 gap-3">
-                  {(["round", "square"] as const).map((s) => (
-                    <button key={s} type="button" onClick={() => setForm({ ...form, shape: s })} className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${form.shape === s ? "border-primary bg-champagne/60" : "border-border bg-background hover:bg-muted"}`}>
+                <div className="grid grid-cols-3 gap-3">
+                  {(["round", "square", "head"] as const).map((s) => (
+                    <button key={s} type="button" onClick={() => setForm({ ...form, shape: s, ...(s === "head" ? { capacity: "2", table_name: form.table_name || "Bride & Groom" } : {}) })} className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${form.shape === s ? "border-primary bg-champagne/60" : "border-border bg-background hover:bg-muted"}`}>
                       <svg viewBox="0 0 60 60" className="w-12 h-12">
                         {s === "round" ? (
                           <>
                             <circle cx="30" cy="30" r="12" fill="hsl(var(--champagne))" stroke="hsl(var(--gold))" strokeWidth="2" />
                             {[0,60,120,180,240,300].map((deg, i) => { const rad = (deg * Math.PI) / 180; return <circle key={i} cx={30 + 20 * Math.cos(rad)} cy={30 + 20 * Math.sin(rad)} r="4" fill="hsl(var(--gold-light))" stroke="hsl(var(--border))" strokeWidth="1" />; })}
                           </>
-                        ) : (
+                        ) : s === "square" ? (
                           <>
                             <rect x="18" y="18" width="24" height="24" rx="3" fill="hsl(var(--champagne))" stroke="hsl(var(--gold))" strokeWidth="2" />
                             {[22, 38].map((x, i) => <circle key={`t${i}`} cx={x} cy="11" r="4" fill="hsl(var(--gold-light))" stroke="hsl(var(--border))" strokeWidth="1" />)}
@@ -240,9 +276,18 @@ const TablesPage: React.FC = () => {
                             <circle cx="11" cy="30" r="4" fill="hsl(var(--gold-light))" stroke="hsl(var(--border))" strokeWidth="1" />
                             <circle cx="49" cy="30" r="4" fill="hsl(var(--gold-light))" stroke="hsl(var(--border))" strokeWidth="1" />
                           </>
+                        ) : (
+                          <>
+                            <rect x="10" y="22" width="40" height="14" rx="4" fill="hsl(var(--champagne))" stroke="hsl(var(--gold))" strokeWidth="2" />
+                            <text x="30" y="33" textAnchor="middle" fontSize="8" fill="hsl(var(--gold))">♥</text>
+                            <circle cx="22" cy="15" r="5" fill="hsl(var(--gold-light))" stroke="hsl(var(--gold))" strokeWidth="1.5" />
+                            <circle cx="38" cy="15" r="5" fill="hsl(var(--gold-light))" stroke="hsl(var(--gold))" strokeWidth="1.5" />
+                            <circle cx="22" cy="47" r="4" fill="hsl(var(--gold-light))" stroke="hsl(var(--border))" strokeWidth="1" />
+                            <circle cx="38" cy="47" r="4" fill="hsl(var(--gold-light))" stroke="hsl(var(--border))" strokeWidth="1" />
+                          </>
                         )}
                       </svg>
-                      <span className="text-xs font-semibold font-body capitalize text-foreground">{s}</span>
+                      <span className="text-xs font-semibold font-body capitalize text-foreground">{s === "head" ? "Bride & Groom" : s}</span>
                     </button>
                   ))}
                 </div>
