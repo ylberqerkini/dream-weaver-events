@@ -65,10 +65,10 @@ const TableSVG: React.FC<{
     return (
       <svg viewBox="0 0 100 100" width={size} height={size}>
         {seats.map((s, i) => (
-          <circle key={i} cx={s.x} cy={s.y} r="7" fill={i < occupied ? tableColor : "hsl(20 15% 25%)"} stroke="hsl(var(--gold) / 0.3)" strokeWidth="1.2" opacity={i < occupied ? 1 : 0.45} />
+          <circle key={i} cx={s.x} cy={s.y} r="7" fill={i < occupied ? tableColor : "hsl(var(--muted))"} stroke="hsl(var(--border))" strokeWidth="1.2" opacity={i < occupied ? 1 : 0.5} />
         ))}
-        <circle cx="50" cy="50" r="20" fill="hsl(42 40% 90%)" stroke={tableColor} strokeWidth="2.5" />
-        <text x="50" y="54" textAnchor="middle" fontSize="7" fontFamily="'Playfair Display', serif" fill="hsl(20 15% 20%)">
+        <circle cx="50" cy="50" r="20" fill="hsl(var(--champagne))" stroke={tableColor} strokeWidth="2.5" />
+        <text x="50" y="54" textAnchor="middle" fontSize="7" fontFamily="'Playfair Display', serif" fill="hsl(var(--foreground))">
           {label.length > 8 ? label.slice(0, 7) + "…" : label}
         </text>
       </svg>
@@ -87,10 +87,10 @@ const TableSVG: React.FC<{
   return (
     <svg viewBox="0 0 100 100" width={size} height={size}>
       {seats.map((s, i) => (
-        <circle key={i} cx={s.x} cy={s.y} r="6" fill={i < occupied ? tableColor : "hsl(20 15% 25%)"} stroke="hsl(var(--gold) / 0.3)" strokeWidth="1.2" opacity={i < occupied ? 1 : 0.45} />
+        <circle key={i} cx={s.x} cy={s.y} r="6" fill={i < occupied ? tableColor : "hsl(var(--muted))"} stroke="hsl(var(--border))" strokeWidth="1.2" opacity={i < occupied ? 1 : 0.5} />
       ))}
-      <rect x={cx - half} y={cy - half} width={half * 2} height={half * 2} rx="4" fill="hsl(42 40% 90%)" stroke={tableColor} strokeWidth="2.5" />
-      <text x="50" y="54" textAnchor="middle" fontSize="7" fontFamily="'Playfair Display', serif" fill="hsl(20 15% 20%)">
+      <rect x={cx - half} y={cy - half} width={half * 2} height={half * 2} rx="4" fill="hsl(var(--champagne))" stroke={tableColor} strokeWidth="2.5" />
+      <text x="50" y="54" textAnchor="middle" fontSize="7" fontFamily="'Playfair Display', serif" fill="hsl(var(--foreground))">
         {label.length > 8 ? label.slice(0, 7) + "…" : label}
       </text>
     </svg>
@@ -203,14 +203,14 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
   const unassignedGuests = guests.filter((g) => !g.table_id);
 
   return (
-    <div className="relative w-full rounded-2xl border border-border overflow-hidden" style={{ height: 560, background: "hsl(20 18% 14%)" }}>
-      <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: `linear-gradient(hsl(var(--gold) / 0.08) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--gold) / 0.08) 1px, transparent 1px)`, backgroundSize: "40px 40px" }} />
-      <div className="absolute top-3 right-3 z-10 border rounded-xl p-2.5 flex flex-col gap-1.5 text-xs font-body" style={{ background: "hsl(20 15% 18% / 0.9)", borderColor: "hsl(var(--gold) / 0.2)", backdropFilter: "blur(8px)" }}>
-        <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full inline-block" style={{ background: "hsl(var(--gold))" }} /><span style={{ color: "hsl(40 20% 70%)" }}>Available</span></div>
-        <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full inline-block" style={{ background: "hsl(38 92% 50%)" }} /><span style={{ color: "hsl(40 20% 70%)" }}>Almost full</span></div>
-        <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full inline-block" style={{ background: "hsl(0 72% 51%)" }} /><span style={{ color: "hsl(40 20% 70%)" }}>Full</span></div>
+    <div className="relative w-full rounded-2xl border border-border overflow-hidden" style={{ height: 560, background: "#ffffff" }}>
+      <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: `linear-gradient(hsl(0 0% 88%) 1px, transparent 1px), linear-gradient(90deg, hsl(0 0% 88%) 1px, transparent 1px)`, backgroundSize: "40px 40px" }} />
+      <div className="absolute top-3 right-3 z-10 bg-card/90 backdrop-blur-sm border border-border rounded-xl p-2.5 flex flex-col gap-1.5 text-xs font-body">
+        <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full inline-block" style={{ background: "hsl(var(--gold))" }} /><span className="text-muted-foreground">Available</span></div>
+        <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full inline-block" style={{ background: "hsl(38 92% 50%)" }} /><span className="text-muted-foreground">Almost full</span></div>
+        <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full inline-block" style={{ background: "hsl(0 72% 51%)" }} /><span className="text-muted-foreground">Full</span></div>
       </div>
-      {tables.length > 0 && <p className="absolute bottom-3 left-3 text-xs font-body z-10 rounded-lg px-2 py-1" style={{ color: "hsl(40 20% 60%)", background: "hsl(20 15% 18% / 0.8)", backdropFilter: "blur(8px)" }}>Drag to rearrange · Click to manage guests</p>}
+      {tables.length > 0 && <p className="absolute bottom-3 left-3 text-xs text-muted-foreground font-body z-10 bg-card/80 backdrop-blur-sm rounded-lg px-2 py-1">Drag to rearrange · Click to manage guests</p>}
       {tables.length === 0 && <div className="absolute inset-0 flex items-center justify-center"><p className="text-muted-foreground font-body text-sm">No tables yet — add one above</p></div>}
 
       <div ref={canvasRef} className="relative w-full h-full overflow-auto" style={{ cursor: dragging ? "grabbing" : "default" }} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onClick={() => setTooltip(null)}>
