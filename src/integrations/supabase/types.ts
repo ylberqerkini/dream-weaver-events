@@ -172,6 +172,9 @@ export type Database = {
           created_at: string
           event_id: string
           id: string
+          position_x: number
+          position_y: number
+          shape: string
           table_name: string
         }
         Insert: {
@@ -179,6 +182,9 @@ export type Database = {
           created_at?: string
           event_id: string
           id?: string
+          position_x?: number
+          position_y?: number
+          shape?: string
           table_name: string
         }
         Update: {
@@ -186,6 +192,9 @@ export type Database = {
           created_at?: string
           event_id?: string
           id?: string
+          position_x?: number
+          position_y?: number
+          shape?: string
           table_name?: string
         }
         Relationships: [
