@@ -48,52 +48,65 @@ function getInitialPositions(tables: SeatingTable[], canvasW: number, canvasH: n
   return positions;
 }
 
-/* ─── Inline SVG table visuals ─── */
+/* ─── Inline SVG table visuals with clickable seats ─── */
 const TableSVG: React.FC<{
   shape: string;
   capacity: number;
-  occupied: number;
+  tableGuests: Guest[];
+  unassignedGuests: Guest[];
   label: string;
   size: number;
-}> = ({ shape, capacity, occupied, label, size }) => {
+  onSeatClick: (seatIndex: number) => void;
+}> = ({ shape, capacity, tableGuests, unassignedGuests, label, size, onSeatClick }) => {
+  const occupied = tableGuests.length;
   const pct = capacity > 0 ? occupied / capacity : 0;
   const tableColor =
     pct >= 1 ? "hsl(0 72% 51%)" : pct >= 0.8 ? "hsl(38 92% 50%)" : "hsl(var(--gold))";
 
-  if (shape === "round") {
-    const r = 30;
-    const seats = Array.from({ length: capacity }, (_, i) => {
-      const angle = (2 * Math.PI * i) / capacity - Math.PI / 2;
-      return { x: 50 + r * Math.cos(angle), y: 50 + r * Math.sin(angle) };
-    });
-    return (
-      <svg viewBox="0 0 100 100" width={size} height={size}>
-        {seats.map((s, i) => (
-          <circle key={i} cx={s.x} cy={s.y} r="7" fill={i < occupied ? tableColor : "hsl(var(--muted))"} stroke="hsl(var(--border))" strokeWidth="1.2" opacity={i < occupied ? 1 : 0.5} />
-        ))}
-        <circle cx="50" cy="50" r="20" fill="hsl(var(--champagne))" stroke={tableColor} strokeWidth="2.5" />
-        <text x="50" y="54" textAnchor="middle" fontSize="7" fontFamily="'Playfair Display', serif" fill="hsl(var(--foreground))">
-          {label.length > 8 ? label.slice(0, 7) + "…" : label}
-        </text>
-      </svg>
-    );
-  }
+  const getSeatPositions = () => {
+    if (shape === "round") {
+      const r = 30;
+      return Array.from({ length: capacity }, (_, i) => {
+        const angle = (2 * Math.PI * i) / capacity - Math.PI / 2;
+        return { x: 50 + r * Math.cos(angle), y: 50 + r * Math.sin(angle) };
+      });
+    }
+    const half = 16, gap = 14, perSide = Math.ceil(capacity / 4);
+    const seats: { x: number; y: number }[] = [];
+    const cx = 50, cy = 50;
+    for (let i = 0; i < perSide && seats.length < capacity; i++) { const totalW = (perSide - 1) * gap; seats.push({ x: cx - totalW / 2 + i * gap, y: cy - half - 9 }); }
+    for (let i = 0; i < perSide && seats.length < capacity; i++) { const totalH = (perSide - 1) * gap; seats.push({ x: cx + half + 9, y: cy - totalH / 2 + i * gap }); }
+    for (let i = 0; i < perSide && seats.length < capacity; i++) { const totalW = (perSide - 1) * gap; seats.push({ x: cx - totalW / 2 + i * gap, y: cy + half + 9 }); }
+    for (let i = 0; i < perSide && seats.length < capacity; i++) { const totalH = (perSide - 1) * gap; seats.push({ x: cx - half - 9, y: cy - totalH / 2 + i * gap }); }
+    return seats;
+  };
 
-  // Square
-  const half = 16, gap = 14, perSide = Math.ceil(capacity / 4);
-  const seats: { x: number; y: number }[] = [];
-  const cx = 50, cy = 50;
-  for (let i = 0; i < perSide && seats.length < capacity; i++) { const totalW = (perSide - 1) * gap; seats.push({ x: cx - totalW / 2 + i * gap, y: cy - half - 9 }); }
-  for (let i = 0; i < perSide && seats.length < capacity; i++) { const totalH = (perSide - 1) * gap; seats.push({ x: cx + half + 9, y: cy - totalH / 2 + i * gap }); }
-  for (let i = 0; i < perSide && seats.length < capacity; i++) { const totalW = (perSide - 1) * gap; seats.push({ x: cx - totalW / 2 + i * gap, y: cy + half + 9 }); }
-  for (let i = 0; i < perSide && seats.length < capacity; i++) { const totalH = (perSide - 1) * gap; seats.push({ x: cx - half - 9, y: cy - totalH / 2 + i * gap }); }
+  const seats = getSeatPositions();
+  const seatRadius = shape === "round" ? 7 : 6;
 
   return (
     <svg viewBox="0 0 100 100" width={size} height={size}>
-      {seats.map((s, i) => (
-        <circle key={i} cx={s.x} cy={s.y} r="6" fill={i < occupied ? tableColor : "hsl(var(--muted))"} stroke="hsl(var(--border))" strokeWidth="1.2" opacity={i < occupied ? 1 : 0.5} />
-      ))}
-      <rect x={cx - half} y={cy - half} width={half * 2} height={half * 2} rx="4" fill="hsl(var(--champagne))" stroke={tableColor} strokeWidth="2.5" />
+      {seats.map((s, i) => {
+        const isOccupied = i < occupied;
+        const guest = tableGuests[i];
+        const canAssign = !isOccupied && unassignedGuests.length > 0;
+        return (
+          <g key={i} style={{ cursor: (isOccupied || canAssign) ? "pointer" : "default" }} onClick={(e) => { e.stopPropagation(); if (isOccupied || canAssign) onSeatClick(i); }}>
+            <circle cx={s.x} cy={s.y} r={seatRadius} fill={isOccupied ? tableColor : canAssign ? "hsl(var(--muted))" : "hsl(var(--muted))"} stroke={canAssign && !isOccupied ? "hsl(var(--gold))" : "hsl(var(--border))"} strokeWidth={canAssign && !isOccupied ? "1.8" : "1.2"} opacity={isOccupied ? 1 : canAssign ? 0.7 : 0.35} />
+            {canAssign && !isOccupied && (
+              <text x={s.x} y={s.y + 1.5} textAnchor="middle" fontSize="6" fill="hsl(var(--gold))" fontWeight="bold" style={{ pointerEvents: "none" }}>+</text>
+            )}
+            {isOccupied && guest && (
+              <title>{guest.full_name} (click to remove)</title>
+            )}
+          </g>
+        );
+      })}
+      {shape === "round" ? (
+        <circle cx="50" cy="50" r="20" fill="hsl(var(--champagne))" stroke={tableColor} strokeWidth="2.5" />
+      ) : (
+        <rect x={50 - 16} y={50 - 16} width={32} height={32} rx="4" fill="hsl(var(--champagne))" stroke={tableColor} strokeWidth="2.5" />
+      )}
       <text x="50" y="54" textAnchor="middle" fontSize="7" fontFamily="'Playfair Display', serif" fill="hsl(var(--foreground))">
         {label.length > 8 ? label.slice(0, 7) + "…" : label}
       </text>
@@ -340,8 +353,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
             width: CANVAS_W, height: CANVAS_H,
             transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
             transformOrigin: "0 0",
-            backgroundImage: `linear-gradient(hsl(0 0% 88%) 1px, transparent 1px), linear-gradient(90deg, hsl(0 0% 88%) 1px, transparent 1px)`,
-            backgroundSize: "40px 40px",
+            background: "hsl(var(--background))",
           }}
         />
 
@@ -370,7 +382,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
           <span>{Math.round(scale * 100)}%</span>
         </div>
 
-        {tables.length > 0 && <p className="absolute bottom-3 left-3 text-xs text-muted-foreground font-body z-10 bg-card/80 backdrop-blur-sm rounded-lg px-2 py-1 no-print">Drag tables · Scroll to zoom · Drag empty area to pan</p>}
+        {tables.length > 0 && <p className="absolute bottom-3 left-3 text-xs text-muted-foreground font-body z-10 bg-card/80 backdrop-blur-sm rounded-lg px-2 py-1 no-print">Drag tables · Click chairs to assign · Scroll to zoom</p>}
         {tables.length === 0 && <div className="absolute inset-0 flex items-center justify-center"><p className="text-muted-foreground font-body text-sm">No tables yet — add one above</p></div>}
 
         <div
@@ -388,7 +400,23 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
             const isDragging = dragging?.id === table.id;
             return (
               <div key={table.id} style={{ position: "absolute", left: pos.x, top: pos.y, width: TABLE_SIZE, height: TABLE_SIZE, cursor: isDragging ? "grabbing" : "grab", zIndex: isDragging ? 20 : tooltip?.tableId === table.id ? 15 : 10, filter: isDragging ? "drop-shadow(0 8px 16px hsl(var(--gold) / 0.4))" : undefined, transition: isDragging ? "none" : "filter 0.15s", userSelect: "none" }} onMouseDown={(e) => handleMouseDown(e, table.id)} onClick={(e) => { e.stopPropagation(); handleTableClick(e, table.id); }}>
-                <TableSVG shape={table.shape} capacity={table.capacity} occupied={tableGuests.length} label={table.table_name} size={TABLE_SIZE} />
+                <TableSVG
+                  shape={table.shape}
+                  capacity={table.capacity}
+                  tableGuests={tableGuests}
+                  unassignedGuests={unassignedGuests}
+                  label={table.table_name}
+                  size={TABLE_SIZE}
+                  onSeatClick={(seatIndex) => {
+                    if (seatIndex < tableGuests.length) {
+                      onAssignGuest(tableGuests[seatIndex].id, null);
+                    } else {
+                      const screenX = pos.x * scale + pan.x + TABLE_SIZE * scale;
+                      const screenY = pos.y * scale + pan.y;
+                      setTooltip({ tableId: table.id, pos: { x: screenX, y: screenY } });
+                    }
+                  }}
+                />
               </div>
             );
           })}
