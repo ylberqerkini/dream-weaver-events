@@ -1,5 +1,5 @@
 import React, { useRef, useState, useCallback, useEffect } from "react";
-import { X } from "lucide-react";
+import { X, Printer } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 interface SeatingTable {
@@ -202,16 +202,42 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
   const getTableGuests = (tableId: string) => guests.filter((g) => g.table_id === tableId);
   const unassignedGuests = guests.filter((g) => !g.table_id);
 
+  const handlePrint = useCallback(() => {
+    setTooltip(null);
+    setTimeout(() => window.print(), 100);
+  }, []);
+
   return (
-    <div className="relative w-full rounded-2xl border border-border overflow-hidden" style={{ height: 560, background: "#ffffff" }}>
-      <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: `linear-gradient(hsl(0 0% 88%) 1px, transparent 1px), linear-gradient(90deg, hsl(0 0% 88%) 1px, transparent 1px)`, backgroundSize: "40px 40px" }} />
-      <div className="absolute top-3 right-3 z-10 bg-card/90 backdrop-blur-sm border border-border rounded-xl p-2.5 flex flex-col gap-1.5 text-xs font-body">
-        <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full inline-block" style={{ background: "hsl(var(--gold))" }} /><span className="text-muted-foreground">Available</span></div>
-        <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full inline-block" style={{ background: "hsl(38 92% 50%)" }} /><span className="text-muted-foreground">Almost full</span></div>
-        <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full inline-block" style={{ background: "hsl(0 72% 51%)" }} /><span className="text-muted-foreground">Full</span></div>
-      </div>
-      {tables.length > 0 && <p className="absolute bottom-3 left-3 text-xs text-muted-foreground font-body z-10 bg-card/80 backdrop-blur-sm rounded-lg px-2 py-1">Drag to rearrange · Click to manage guests</p>}
-      {tables.length === 0 && <div className="absolute inset-0 flex items-center justify-center"><p className="text-muted-foreground font-body text-sm">No tables yet — add one above</p></div>}
+    <>
+      <style>{`
+        @media print {
+          @page { size: A4 landscape; margin: 10mm; }
+          body * { visibility: hidden !important; }
+          #floor-plan-printable, #floor-plan-printable * { visibility: visible !important; }
+          #floor-plan-printable {
+            position: fixed !important;
+            left: 0 !important; top: 0 !important;
+            width: 100vw !important; height: 100vh !important;
+            border: none !important; border-radius: 0 !important;
+            background: #fff !important;
+          }
+          #floor-plan-printable .no-print { display: none !important; }
+        }
+      `}</style>
+      <div id="floor-plan-printable" className="relative w-full rounded-2xl border border-border overflow-hidden" style={{ height: 560, background: "#ffffff" }}>
+        <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: `linear-gradient(hsl(0 0% 88%) 1px, transparent 1px), linear-gradient(90deg, hsl(0 0% 88%) 1px, transparent 1px)`, backgroundSize: "40px 40px" }} />
+        <div className="absolute top-3 right-3 z-10 flex items-start gap-2 no-print">
+          <button onClick={handlePrint} className="bg-card/90 backdrop-blur-sm border border-border rounded-xl p-2 text-muted-foreground hover:text-foreground transition-colors" title="Print floor plan">
+            <Printer size={16} />
+          </button>
+          <div className="bg-card/90 backdrop-blur-sm border border-border rounded-xl p-2.5 flex flex-col gap-1.5 text-xs font-body">
+            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full inline-block" style={{ background: "hsl(var(--gold))" }} /><span className="text-muted-foreground">Available</span></div>
+            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full inline-block" style={{ background: "hsl(38 92% 50%)" }} /><span className="text-muted-foreground">Almost full</span></div>
+            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full inline-block" style={{ background: "hsl(0 72% 51%)" }} /><span className="text-muted-foreground">Full</span></div>
+          </div>
+        </div>
+        {tables.length > 0 && <p className="absolute bottom-3 left-3 text-xs text-muted-foreground font-body z-10 bg-card/80 backdrop-blur-sm rounded-lg px-2 py-1 no-print">Drag to rearrange · Click to manage guests</p>}
+        {tables.length === 0 && <div className="absolute inset-0 flex items-center justify-center"><p className="text-muted-foreground font-body text-sm">No tables yet — add one above</p></div>}
 
       <div ref={canvasRef} className="relative w-full h-full overflow-auto" style={{ cursor: dragging ? "grabbing" : "default" }} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onClick={() => setTooltip(null)}>
         <div style={{ width: CANVAS_W, height: CANVAS_H, position: "relative" }}>
@@ -232,7 +258,8 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
           })()}
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 };
 
