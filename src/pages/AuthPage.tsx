@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Eye, EyeOff, Flower } from "lucide-react";
 
 const AuthPage: React.FC = () => {
-  const [mode, setMode] = useState<"login" | "register">("login");
+  const [mode, setMode] = useState<"login" | "register" | "forgot">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
@@ -18,7 +18,14 @@ const AuthPage: React.FC = () => {
     setLoading(true);
 
     try {
-      if (mode === "register") {
+      if (mode === "forgot") {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/reset-password`,
+        });
+        if (error) throw error;
+        toast.success("Check your email for a reset link!");
+        setMode("login");
+      } else if (mode === "register") {
         const { error } = await supabase.auth.signUp({
           email,
           password,
@@ -77,21 +84,26 @@ const AuthPage: React.FC = () => {
         {/* Card */}
         <div className="bg-card rounded-2xl shadow-card border border-border p-8">
           {/* Tabs */}
-          <div className="flex rounded-xl bg-muted p-1 mb-6">
-            {(["login", "register"] as const).map((m) => (
-              <button
-                key={m}
-                onClick={() => setMode(m)}
-                className={`flex-1 py-2 rounded-lg text-sm font-body font-semibold transition-all duration-200 ${
-                  mode === m
-                    ? "bg-card shadow-soft text-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {m === "login" ? "Sign In" : "Create Account"}
-              </button>
-            ))}
-          </div>
+          {mode !== "forgot" && (
+            <div className="flex rounded-xl bg-muted p-1 mb-6">
+              {(["login", "register"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setMode(m)}
+                  className={`flex-1 py-2 rounded-lg text-sm font-body font-semibold transition-all duration-200 ${
+                    mode === m
+                      ? "bg-card shadow-soft text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {m === "login" ? "Sign In" : "Create Account"}
+                </button>
+              ))}
+            </div>
+          )}
+          {mode === "forgot" && (
+            <h2 className="text-lg font-display text-foreground mb-4 text-center">Reset Password</h2>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {mode === "register" && (
@@ -120,27 +132,41 @@ const AuthPage: React.FC = () => {
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-semibold text-foreground mb-1.5">Password</label>
-              <div className="relative">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                  minLength={6}
-                  className="w-full px-4 py-3 pr-12 rounded-xl border border-input bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all"
-                />
+            {mode !== "forgot" && (
+              <div>
+                <label className="block text-sm font-semibold text-foreground mb-1.5">Password</label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    required
+                    minLength={6}
+                    className="w-full px-4 py-3 pr-12 rounded-xl border border-input bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {mode === "login" && (
+              <div className="flex justify-end">
                 <button
                   type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => setMode("forgot")}
+                  className="text-xs text-gold hover:underline font-body"
                 >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  Forgot password?
                 </button>
               </div>
-            </div>
+            )}
 
             <button
               type="submit"
@@ -151,20 +177,37 @@ const AuthPage: React.FC = () => {
                 ? "Please wait..."
                 : mode === "login"
                 ? "Sign In"
-                : "Create Account"}
+                : mode === "register"
+                ? "Create Account"
+                : "Send Reset Link"}
             </button>
           </form>
 
           <div className="mt-6 text-center">
             <div className="divider-gold mb-4" />
             <p className="text-sm text-muted-foreground font-body">
-              {mode === "login" ? "Don't have an account? " : "Already have an account? "}
-              <button
-                onClick={() => setMode(mode === "login" ? "register" : "login")}
-                className="text-gold font-semibold hover:underline"
-              >
-                {mode === "login" ? "Register" : "Sign In"}
-              </button>
+              {mode === "forgot" ? (
+                <>
+                  Remember your password?{" "}
+                  <button onClick={() => setMode("login")} className="text-gold font-semibold hover:underline">
+                    Sign In
+                  </button>
+                </>
+              ) : mode === "login" ? (
+                <>
+                  Don't have an account?{" "}
+                  <button onClick={() => setMode("register")} className="text-gold font-semibold hover:underline">
+                    Register
+                  </button>
+                </>
+              ) : (
+                <>
+                  Already have an account?{" "}
+                  <button onClick={() => setMode("login")} className="text-gold font-semibold hover:underline">
+                    Sign In
+                  </button>
+                </>
+              )}
             </p>
           </div>
         </div>
