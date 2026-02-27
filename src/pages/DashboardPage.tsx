@@ -5,7 +5,18 @@ import { supabase } from "@/integrations/supabase/client";
 import DashboardLayout from "@/components/DashboardLayout";
 import { toast } from "sonner";
 import {
-  Users, CheckCircle, Clock, XCircle, Plus, Copy, ExternalLink, Loader2, Flower, Images, MessageCircle, Pencil, X, Palette
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Users, CheckCircle, Clock, XCircle, Plus, Copy, ExternalLink, Loader2,
+  Flower, Images, MessageCircle, Pencil, X, Palette, Trash2, ChevronRight,
 } from "lucide-react";
 
 interface EventData {
@@ -26,10 +37,18 @@ interface GuestStats {
   declined: number;
 }
 
+const MAX_EVENTS = 5;
+
+const formatLocalDate = (dateStr: string, options?: Intl.DateTimeFormatOptions) => {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("en-GB", options);
+};
+
 const DashboardPage: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [event, setEvent] = useState<EventData | null>(null);
+  const [events, setEvents] = useState<EventData[]>([]);
+  const [selectedEvent, setSelectedEvent] = useState<EventData | null>(null);
   const [stats, setStats] = useState<GuestStats>({ total: 0, confirmed: 0, pending: 0, declined: 0 });
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -37,6 +56,8 @@ const DashboardPage: React.FC = () => {
   const [showEventForm, setShowEventForm] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<EventData | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [form, setForm] = useState({
     event_name: "",
     bride_name: "",
@@ -46,7 +67,7 @@ const DashboardPage: React.FC = () => {
   });
 
   useEffect(() => {
-    fetchEvent();
+    fetchEvents();
     checkAdmin();
   }, [user]);
 
@@ -60,16 +81,23 @@ const DashboardPage: React.FC = () => {
     if (data && data.length > 0) setIsAdmin(true);
   };
 
-  const fetchEvent = async () => {
+  const fetchEvents = async () => {
     if (!user) return;
     const { data } = await supabase
       .from("events")
       .select("*")
       .eq("user_id", user.id)
-      .limit(1);
+      .order("created_at", { ascending: false })
+      .limit(MAX_EVENTS);
     if (data && data.length > 0) {
-      setEvent(data[0]);
-      fetchStats(data[0].id);
+      setEvents(data);
+      const current = selectedEvent ? data.find(e => e.id === selectedEvent.id) : null;
+      const toSelect = current || data[0];
+      setSelectedEvent(toSelect);
+      fetchStats(toSelect.id);
+    } else {
+      setEvents([]);
+      setSelectedEvent(null);
     }
     setLoading(false);
   };
@@ -89,8 +117,17 @@ const DashboardPage: React.FC = () => {
     }
   };
 
+  const selectEvent = (ev: EventData) => {
+    setSelectedEvent(ev);
+    fetchStats(ev.id);
+  };
+
   const handlePurchaseAndCreate = async () => {
     if (!user) return;
+    if (events.length >= MAX_EVENTS) {
+      toast.error(`You can have a maximum of ${MAX_EVENTS} events`);
+      return;
+    }
     if (!form.event_name || !form.bride_name || !form.groom_name || !form.event_date || !form.location) {
       toast.error("Please fill in all fields");
       return;
@@ -123,37 +160,67 @@ const DashboardPage: React.FC = () => {
       return;
     }
     toast.success(isAdmin ? "Event created successfully! 🌸" : "Payment successful! Your invitation has been created 🌸");
-    setEvent(data);
+    setEvents(prev => [data, ...prev]);
+    setSelectedEvent(data);
+    fetchStats(data.id);
     setShowEventForm(false);
+    setForm({ event_name: "", bride_name: "", groom_name: "", event_date: "", location: "" });
+  };
+
+  const handleDeleteEvent = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    // Delete related data first (no FK cascade)
+    await supabase.from("event_photos").delete().eq("event_id", deleteTarget.id);
+    await supabase.from("guests").delete().eq("event_id", deleteTarget.id);
+    await supabase.from("seating_tables").delete().eq("event_id", deleteTarget.id);
+    const { error } = await supabase.from("events").delete().eq("id", deleteTarget.id);
+    setDeleting(false);
+    if (error) {
+      toast.error("Failed to delete event: " + error.message);
+      return;
+    }
+    toast.success("Event deleted");
+    const remaining = events.filter(e => e.id !== deleteTarget.id);
+    setEvents(remaining);
+    if (selectedEvent?.id === deleteTarget.id) {
+      const next = remaining[0] || null;
+      setSelectedEvent(next);
+      if (next) fetchStats(next.id);
+      else setStats({ total: 0, confirmed: 0, pending: 0, declined: 0 });
+    }
+    setDeleteTarget(null);
   };
 
   const copyLink = () => {
-    const link = `${window.location.origin}/invite/${event?.slug}`;
+    if (!selectedEvent) return;
+    const link = `${window.location.origin}/invite/${selectedEvent.slug}`;
     navigator.clipboard.writeText(link);
     toast.success("Invite link copied to clipboard!");
   };
 
   const shareWhatsApp = () => {
-    if (!event) return;
-    const link = `${window.location.origin}/invite/${event.slug}`;
-    const message = `💒 You're invited to ${event.bride_name} & ${event.groom_name}'s wedding!\n\n📅 ${new Date(event.event_date).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}\n📍 ${event.location}\n\nRSVP here: ${link}`;
+    if (!selectedEvent) return;
+    const link = `${window.location.origin}/invite/${selectedEvent.slug}`;
+    const dateStr = formatLocalDate(selectedEvent.event_date, { day: "numeric", month: "long", year: "numeric" });
+    const message = `💒 You're invited to ${selectedEvent.bride_name} & ${selectedEvent.groom_name}'s wedding!\n\n📅 ${dateStr}\n📍 ${selectedEvent.location}\n\nRSVP here: ${link}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank");
   };
 
   const openEditForm = () => {
-    if (!event) return;
+    if (!selectedEvent) return;
     setForm({
-      event_name: event.event_name,
-      bride_name: event.bride_name,
-      groom_name: event.groom_name,
-      event_date: event.event_date,
-      location: event.location,
+      event_name: selectedEvent.event_name,
+      bride_name: selectedEvent.bride_name,
+      groom_name: selectedEvent.groom_name,
+      event_date: selectedEvent.event_date,
+      location: selectedEvent.location,
     });
     setShowEditForm(true);
   };
 
   const handleUpdateEvent = async () => {
-    if (!event || !user) return;
+    if (!selectedEvent || !user) return;
     if (!form.event_name || !form.bride_name || !form.groom_name || !form.event_date || !form.location) {
       toast.error("Please fill in all fields");
       return;
@@ -168,7 +235,7 @@ const DashboardPage: React.FC = () => {
         event_date: form.event_date,
         location: form.location,
       })
-      .eq("id", event.id)
+      .eq("id", selectedEvent.id)
       .select()
       .single();
     setEditSaving(false);
@@ -177,8 +244,18 @@ const DashboardPage: React.FC = () => {
       return;
     }
     toast.success("Invitation updated! ✨");
-    setEvent(data);
+    setSelectedEvent(data);
+    setEvents(prev => prev.map(e => e.id === data.id ? data : e));
     setShowEditForm(false);
+  };
+
+  const openCreateForm = () => {
+    if (events.length >= MAX_EVENTS) {
+      toast.error(`You can have a maximum of ${MAX_EVENTS} events`);
+      return;
+    }
+    setForm({ event_name: "", bride_name: "", groom_name: "", event_date: "", location: "" });
+    setShowEventForm(true);
   };
 
   const statsCards = [
@@ -198,25 +275,61 @@ const DashboardPage: React.FC = () => {
     );
   }
 
+  const event = selectedEvent;
+
   return (
     <DashboardLayout>
       <div className="space-y-8 animate-fade-up">
         {/* Header */}
         <div>
           <h1 className="font-display text-3xl text-foreground">
-            {event ? `Welcome back ✨` : "Welcome to DreamFlower"}
+            {events.length > 0 ? `Welcome back ✨` : "Welcome to DreamFlower"}
           </h1>
           <p className="text-muted-foreground font-body mt-1">
-            {event
-              ? `Managing "${event.event_name}"`
+            {events.length > 0
+              ? `You have ${events.length} invitation${events.length > 1 ? "s" : ""}`
               : "Purchase your invitation to get started"}
           </p>
         </div>
 
-        {!event ? (
-          /* No event yet – purchase flow */
+        {/* Event selector (when there are events) */}
+        {events.length > 0 && (
+          <div className="flex gap-3 overflow-x-auto pb-2">
+            {events.map((ev) => (
+              <button
+                key={ev.id}
+                onClick={() => selectEvent(ev)}
+                className={`shrink-0 rounded-2xl border p-4 text-left transition-all min-w-[200px] ${
+                  event?.id === ev.id
+                    ? "border-gold bg-champagne shadow-gold"
+                    : "border-border bg-card hover:border-gold/50"
+                }`}
+              >
+                <p className="font-display text-sm font-semibold text-foreground truncate">{ev.event_name}</p>
+                <p className="text-xs text-muted-foreground font-body mt-0.5 truncate">
+                  {ev.bride_name} & {ev.groom_name}
+                </p>
+                <p className="text-xs text-muted-foreground font-body mt-0.5">
+                  {formatLocalDate(ev.event_date, { day: "numeric", month: "short", year: "numeric" })}
+                </p>
+              </button>
+            ))}
+            {events.length < MAX_EVENTS && (
+              <button
+                onClick={openCreateForm}
+                className="shrink-0 rounded-2xl border border-dashed border-border p-4 flex flex-col items-center justify-center min-w-[140px] text-muted-foreground hover:border-gold hover:text-gold transition-all"
+              >
+                <Plus size={20} />
+                <span className="text-xs font-body mt-1">New Event</span>
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Create form (no events yet OR adding new) */}
+        {(events.length === 0 || showEventForm) && (
           <div className="max-w-2xl">
-            {!showEventForm ? (
+            {!showEventForm && events.length === 0 ? (
               <div className="bg-card rounded-2xl shadow-card border border-border p-8 text-center">
                 <div className="w-20 h-20 rounded-full gradient-blush flex items-center justify-center mx-auto mb-6">
                   <Flower className="w-10 h-10 text-blush-deep" />
@@ -250,9 +363,11 @@ const DashboardPage: React.FC = () => {
                   {isAdmin ? "Create Invitation (Admin)" : "Purchase Invitation – €25"}
                 </button>
               </div>
-            ) : (
+            ) : showEventForm ? (
               <div className="bg-card rounded-2xl shadow-card border border-border p-8">
-                <h2 className="font-display text-2xl mb-6">Event Details</h2>
+                <h2 className="font-display text-2xl mb-6">
+                  {events.length > 0 ? "Create Another Invitation" : "Event Details"}
+                </h2>
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-semibold mb-1.5">Event Name</label>
@@ -322,9 +437,12 @@ const DashboardPage: React.FC = () => {
                   </button>
                 </div>
               </div>
-            )}
+            ) : null}
           </div>
-        ) : (
+        )}
+
+        {/* Selected event details */}
+        {event && !showEventForm && (
           <>
             {/* Event info banner */}
             <div className="bg-card rounded-2xl shadow-card border border-border p-6">
@@ -336,7 +454,7 @@ const DashboardPage: React.FC = () => {
                   </div>
                   <h2 className="font-display text-xl text-foreground">{event.event_name}</h2>
                   <p className="text-muted-foreground font-body text-sm mt-0.5">
-                    {event.bride_name} & {event.groom_name} · {new Date(event.event_date).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
+                    {event.bride_name} & {event.groom_name} · {formatLocalDate(event.event_date, { day: "numeric", month: "long", year: "numeric" })}
                   </p>
                   <p className="text-muted-foreground font-body text-sm">{event.location}</p>
                 </div>
@@ -347,6 +465,13 @@ const DashboardPage: React.FC = () => {
                   >
                     <Pencil size={14} />
                     Edit
+                  </button>
+                  <button
+                    onClick={() => setDeleteTarget(event)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl border border-destructive/30 text-destructive text-sm font-semibold font-body hover:bg-destructive/10 transition-all"
+                  >
+                    <Trash2 size={14} />
+                    Delete
                   </button>
                   <button
                     onClick={copyLink}
@@ -480,15 +605,31 @@ const DashboardPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete "{deleteTarget?.event_name}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this invitation and all its guests, seating tables, and photos. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteEvent}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? <><Loader2 size={14} className="animate-spin mr-2" /> Deleting...</> : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   );
 };
-
-const ChevronRight: React.FC<{ size: number }> = ({ size }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <polyline points="9 18 15 12 9 6" />
-  </svg>
-);
 
 const TableIcon: React.FC = () => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
