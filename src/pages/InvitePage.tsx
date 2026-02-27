@@ -89,7 +89,8 @@ const InvitePage: React.FC = () => {
     if (!event) return;
     const update = () => {
       const now = new Date().getTime();
-      const target = new Date(event.event_date).getTime();
+      const [y, m, d] = event.event_date.split("-").map(Number);
+      const target = new Date(y, m - 1, d).getTime();
       const diff = target - now;
       if (diff <= 0) {
         setCountdown({ days: 0, hours: 0, minutes: 0, seconds: 0 });
@@ -149,7 +150,9 @@ const InvitePage: React.FC = () => {
     );
   }
 
-  const eventDate = new Date(event.event_date);
+  // Parse date as local (not UTC) to avoid timezone shift
+  const [year, month, day] = event.event_date.split("-").map(Number);
+  const eventDate = new Date(year, month - 1, day);
   const formattedDate = eventDate.toLocaleDateString("en-GB", {
     weekday: "long",
     day: "numeric",
