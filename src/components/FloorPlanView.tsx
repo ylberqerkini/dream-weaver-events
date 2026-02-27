@@ -118,7 +118,12 @@ const TableSVG: React.FC<{
               <text x={s.x} y={s.y + 1.5} textAnchor="middle" fontSize="6" fill="hsl(var(--gold))" fontWeight="bold" style={{ pointerEvents: "none" }}>+</text>
             )}
             {isOccupied && guest && (
-              <title>{guest.full_name} (click to remove)</title>
+              <>
+                <title>{guest.full_name} (click to remove)</title>
+                <text x={s.x} y={s.y + seatRadius + 7} textAnchor="middle" fontSize="3.5" fill="hsl(var(--foreground))" style={{ pointerEvents: "none" }} fontFamily="'Inter', sans-serif">
+                  {guest.full_name.length > 10 ? guest.full_name.slice(0, 9) + "…" : guest.full_name}
+                </text>
+              </>
             )}
           </g>
         );
