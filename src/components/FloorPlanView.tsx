@@ -109,7 +109,7 @@ const TableSVG: React.FC<{
         const canAssign = !isOccupied && unassignedGuests.length > 0;
         const isSpecialSeat = isHead && i < 2;
         return (
-          <g key={i} style={{ cursor: (isOccupied || canAssign) ? "pointer" : "default" }} onClick={(e) => { e.stopPropagation(); if (isOccupied || canAssign) onSeatClick(i); }}>
+          <g key={i} style={{ cursor: (isOccupied || canAssign) ? "pointer" : "default" }} onMouseDown={(e) => { if (isOccupied || canAssign) e.stopPropagation(); }} onClick={(e) => { e.stopPropagation(); if (isOccupied || canAssign) onSeatClick(i); }}>
             <circle cx={s.x} cy={s.y} r={isSpecialSeat ? 9 : seatRadius} fill={isOccupied ? (isSpecialSeat ? "hsl(var(--gold))" : tableColor) : canAssign ? "hsl(var(--muted))" : "hsl(var(--muted))"} stroke={isSpecialSeat ? tableColor : canAssign && !isOccupied ? "hsl(var(--gold))" : "hsl(var(--border))"} strokeWidth={isSpecialSeat ? "2" : canAssign && !isOccupied ? "1.8" : "1.2"} opacity={isOccupied ? 1 : canAssign ? 0.7 : 0.35} />
             {isSpecialSeat && (
               <text x={s.x} y={s.y + 1.5} textAnchor="middle" fontSize="5" fill={isOccupied ? "hsl(var(--primary-foreground))" : "hsl(var(--muted-foreground))"} style={{ pointerEvents: "none" }}>♥</text>
