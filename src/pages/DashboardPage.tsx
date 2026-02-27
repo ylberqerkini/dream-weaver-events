@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import DashboardLayout from "@/components/DashboardLayout";
 import { toast } from "sonner";
 import {
-  Users, CheckCircle, Clock, XCircle, Plus, Copy, ExternalLink, Loader2, Flower, Images, MessageCircle, Pencil, X
+  Users, CheckCircle, Clock, XCircle, Plus, Copy, ExternalLink, Loader2, Flower, Images, MessageCircle, Pencil, X, Palette
 } from "lucide-react";
 
 interface EventData {
@@ -389,7 +389,7 @@ const DashboardPage: React.FC = () => {
             </div>
 
             {/* Quick actions */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <button
                 onClick={() => navigate(`/dashboard/guests/${event.id}`)}
                 className="bg-card rounded-2xl shadow-card border border-border p-6 text-left hover:border-gold transition-all group"
@@ -410,6 +410,17 @@ const DashboardPage: React.FC = () => {
                 <p className="text-muted-foreground font-body text-sm">Create tables and assign guests</p>
                 <div className="mt-4 flex items-center gap-2 text-gold text-sm font-semibold font-body">
                   Go to Tables <ChevronRight size={14} />
+                </div>
+              </button>
+              <button
+                onClick={() => navigate(`/dashboard/design`)}
+                className="bg-card rounded-2xl shadow-card border border-border p-6 text-left hover:border-gold transition-all group"
+              >
+                <Palette className="text-gold mb-3" size={24} />
+                <h3 className="font-display text-lg mb-1">Design Editor</h3>
+                <p className="text-muted-foreground font-body text-sm">Templates, colors, fonts & backgrounds</p>
+                <div className="mt-4 flex items-center gap-2 text-gold text-sm font-semibold font-body">
+                  Customize <ChevronRight size={14} />
                 </div>
               </button>
               <button
