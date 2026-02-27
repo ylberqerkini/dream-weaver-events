@@ -1,5 +1,5 @@
 import React, { useRef, useState, useCallback, useEffect } from "react";
-import { X, Printer, ZoomIn, ZoomOut, Maximize, RectangleHorizontal, RectangleVertical } from "lucide-react";
+import { X, Printer, ZoomIn, ZoomOut, Maximize, RectangleHorizontal, RectangleVertical, Users, ChevronLeft, ChevronRight, GripVertical } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 interface SeatingTable {
@@ -27,15 +27,14 @@ interface FloorPlanViewProps {
   onRefresh: () => void;
 }
 
-const LANDSCAPE = { w: 1122, h: 793 };  // A4 landscape ratio (297×210mm)
-const PORTRAIT = { w: 793, h: 1122 };   // A4 portrait ratio (210×297mm)
+const LANDSCAPE = { w: 1122, h: 793 };
+const PORTRAIT = { w: 793, h: 1122 };
 const TABLE_SIZE = 100;
 
 function getInitialPositions(tables: SeatingTable[], canvasW: number, canvasH: number): Record<string, { x: number; y: number }> {
   const positions: Record<string, { x: number; y: number }> = {};
   tables.forEach((t, i) => {
     if (t.position_x || t.position_y) {
-      // Clamp to canvas bounds
       positions[t.id] = {
         x: Math.min(t.position_x, canvasW - TABLE_SIZE),
         y: Math.min(t.position_y, canvasH - TABLE_SIZE),
@@ -57,7 +56,8 @@ const TableSVG: React.FC<{
   label: string;
   size: number;
   onSeatClick: (seatIndex: number) => void;
-}> = ({ shape, capacity, tableGuests, unassignedGuests, label, size, onSeatClick }) => {
+  highlightEmpty?: boolean;
+}> = ({ shape, capacity, tableGuests, unassignedGuests, label, size, onSeatClick, highlightEmpty }) => {
   const occupied = tableGuests.length;
   const pct = capacity > 0 ? occupied / capacity : 0;
   const tableColor =
@@ -66,10 +66,8 @@ const TableSVG: React.FC<{
   const getSeatPositions = () => {
     if (shape === "head") {
       const seats: { x: number; y: number }[] = [];
-      // Two special seats (bride & groom) at center back
       seats.push({ x: 40, y: 25 });
       seats.push({ x: 60, y: 25 });
-      // Remaining along the front
       const remaining = capacity - 2;
       if (remaining > 0) {
         const gap = Math.min(14, 80 / (remaining + 1));
@@ -108,9 +106,16 @@ const TableSVG: React.FC<{
         const guest = tableGuests[i];
         const canAssign = !isOccupied && unassignedGuests.length > 0;
         const isSpecialSeat = isHead && i < 2;
+        const isDropTarget = highlightEmpty && !isOccupied && occupied < capacity;
         return (
           <g key={i} style={{ cursor: (isOccupied || canAssign) ? "pointer" : "default" }} onMouseDown={(e) => { if (isOccupied || canAssign) e.stopPropagation(); }} onClick={(e) => { e.stopPropagation(); if (isOccupied || canAssign) onSeatClick(i); }}>
-            <circle cx={s.x} cy={s.y} r={isSpecialSeat ? 9 : seatRadius} fill={isOccupied ? (isSpecialSeat ? "hsl(var(--gold))" : tableColor) : canAssign ? "hsl(var(--muted))" : "hsl(var(--muted))"} stroke={isSpecialSeat ? tableColor : canAssign && !isOccupied ? "hsl(var(--gold))" : "hsl(var(--border))"} strokeWidth={isSpecialSeat ? "2" : canAssign && !isOccupied ? "1.8" : "1.2"} opacity={isOccupied ? 1 : canAssign ? 0.7 : 0.35} />
+            <circle cx={s.x} cy={s.y} r={isSpecialSeat ? 9 : seatRadius}
+              fill={isOccupied ? (isSpecialSeat ? "hsl(var(--gold))" : tableColor) : isDropTarget ? "hsl(var(--gold) / 0.3)" : canAssign ? "hsl(var(--muted))" : "hsl(var(--muted))"}
+              stroke={isDropTarget ? "hsl(var(--gold))" : isSpecialSeat ? tableColor : canAssign && !isOccupied ? "hsl(var(--gold))" : "hsl(var(--border))"}
+              strokeWidth={isDropTarget ? "2.5" : isSpecialSeat ? "2" : canAssign && !isOccupied ? "1.8" : "1.2"}
+              opacity={isOccupied ? 1 : isDropTarget ? 0.9 : canAssign ? 0.7 : 0.35}
+              strokeDasharray={isDropTarget ? "3 2" : undefined}
+            />
             {isSpecialSeat && (
               <text x={s.x} y={s.y + 1.5} textAnchor="middle" fontSize="5" fill={isOccupied ? "hsl(var(--primary-foreground))" : "hsl(var(--muted-foreground))"} style={{ pointerEvents: "none" }}>♥</text>
             )}
@@ -189,6 +194,76 @@ const TableTooltip: React.FC<{
   );
 };
 
+/* ─── Unassigned guests sidebar panel ─── */
+const GuestSidebarPanel: React.FC<{
+  unassignedGuests: Guest[];
+  isOpen: boolean;
+  onToggle: () => void;
+}> = ({ unassignedGuests, isOpen, onToggle }) => {
+  const [search, setSearch] = useState("");
+  const filtered = unassignedGuests.filter((g) =>
+    g.full_name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div
+      className={`absolute top-0 left-0 z-20 h-full flex no-print transition-transform duration-300 ${isOpen ? "translate-x-0" : "-translate-x-[220px]"}`}
+    >
+      <div className="w-[220px] h-full bg-card/95 backdrop-blur-sm border-r border-border flex flex-col overflow-hidden">
+        <div className="px-3 pt-3 pb-2 border-b border-border">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-1.5">
+              <Users size={14} className="text-gold" />
+              <span className="font-display text-sm font-semibold">Unassigned</span>
+            </div>
+            <span className="text-xs text-muted-foreground font-body">{unassignedGuests.length}</span>
+          </div>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search guests..."
+            className="w-full px-2.5 py-1.5 rounded-lg border border-input bg-background text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+        </div>
+        <div className="flex-1 overflow-y-auto px-1.5 py-1.5 space-y-0.5">
+          {filtered.length === 0 && (
+            <p className="text-xs text-muted-foreground text-center py-4 font-body">
+              {unassignedGuests.length === 0 ? "All guests seated!" : "No matches"}
+            </p>
+          )}
+          {filtered.map((g) => (
+            <div
+              key={g.id}
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData("guest-id", g.id);
+                e.dataTransfer.setData("guest-name", g.full_name);
+                e.dataTransfer.effectAllowed = "move";
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-body text-foreground cursor-grab active:cursor-grabbing hover:bg-muted/60 transition-colors select-none group"
+            >
+              <GripVertical size={12} className="text-muted-foreground/50 group-hover:text-muted-foreground shrink-0" />
+              <span className="truncate flex-1">{g.full_name}</span>
+              <span className="text-[10px] text-muted-foreground shrink-0 capitalize">{g.rsvp_status}</span>
+            </div>
+          ))}
+        </div>
+        <div className="px-3 py-2 border-t border-border">
+          <p className="text-[10px] text-muted-foreground font-body text-center">Drag guests onto tables</p>
+        </div>
+      </div>
+      {/* Toggle tab */}
+      <button
+        onClick={onToggle}
+        className="self-center -ml-px bg-card/95 backdrop-blur-sm border border-l-0 border-border rounded-r-lg px-1 py-3 text-muted-foreground hover:text-foreground transition-colors"
+        title={isOpen ? "Hide guest list" : "Show guest list"}
+      >
+        {isOpen ? <ChevronLeft size={14} /> : <ChevronRight size={14} />}
+      </button>
+    </div>
+  );
+};
+
 const MIN_ZOOM = 0.3;
 const MAX_ZOOM = 3;
 
@@ -200,6 +275,8 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
   const [tooltip, setTooltip] = useState<{ tableId: string; pos: { x: number; y: number } } | null>(null);
   const [canvasRect, setCanvasRect] = useState<DOMRect | null>(null);
   const [orientation, setOrientation] = useState<"landscape" | "portrait">("landscape");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [dragOverTableId, setDragOverTableId] = useState<string | null>(null);
 
   const canvas = orientation === "landscape" ? LANDSCAPE : PORTRAIT;
   const CANVAS_W = canvas.w;
@@ -337,6 +414,31 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
   const getTableGuests = (tableId: string) => guests.filter((g) => g.table_id === tableId);
   const unassignedGuests = guests.filter((g) => !g.table_id);
 
+  /* ─── Drag-and-drop handlers for guest assignment ─── */
+  const handleTableDragOver = useCallback((e: React.DragEvent, tableId: string) => {
+    const tGuests = guests.filter((g) => g.table_id === tableId);
+    const table = tables.find((t) => t.id === tableId);
+    if (!table || tGuests.length >= table.capacity) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverTableId(tableId);
+  }, [guests, tables]);
+
+  const handleTableDragLeave = useCallback(() => {
+    setDragOverTableId(null);
+  }, []);
+
+  const handleTableDrop = useCallback((e: React.DragEvent, tableId: string) => {
+    e.preventDefault();
+    setDragOverTableId(null);
+    const guestId = e.dataTransfer.getData("guest-id");
+    if (!guestId) return;
+    const table = tables.find((t) => t.id === tableId);
+    const tGuests = guests.filter((g) => g.table_id === tableId);
+    if (!table || tGuests.length >= table.capacity) return;
+    onAssignGuest(guestId, tableId);
+  }, [tables, guests, onAssignGuest]);
+
   const handlePrint = useCallback(() => {
     setTooltip(null);
     const prevScale = scale;
@@ -378,6 +480,15 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
         onMouseDown={handleCanvasMouseDown}
         onClick={() => setTooltip(null)}
       >
+        {/* Guest sidebar panel */}
+        {unassignedGuests.length > 0 && (
+          <GuestSidebarPanel
+            unassignedGuests={unassignedGuests}
+            isOpen={sidebarOpen}
+            onToggle={() => setSidebarOpen((o) => !o)}
+          />
+        )}
+
         <div
           className="absolute pointer-events-none"
           style={{
@@ -429,8 +540,28 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
             const pos = positions[table.id] ?? { x: 0, y: 0 };
             const tableGuests = getTableGuests(table.id);
             const isDragging = dragging?.id === table.id;
+            const isDragOver = dragOverTableId === table.id;
             return (
-              <div key={table.id} style={{ position: "absolute", left: pos.x, top: pos.y, width: TABLE_SIZE, height: TABLE_SIZE, cursor: isDragging ? "grabbing" : "grab", zIndex: isDragging ? 20 : tooltip?.tableId === table.id ? 15 : 10, filter: isDragging ? "drop-shadow(0 8px 16px hsl(var(--gold) / 0.4))" : undefined, transition: isDragging ? "none" : "filter 0.15s", userSelect: "none" }} onMouseDown={(e) => handleMouseDown(e, table.id)} onClick={(e) => { e.stopPropagation(); handleTableClick(e, table.id); }}>
+              <div
+                key={table.id}
+                style={{
+                  position: "absolute", left: pos.x, top: pos.y,
+                  width: TABLE_SIZE, height: TABLE_SIZE,
+                  cursor: isDragging ? "grabbing" : "grab",
+                  zIndex: isDragging ? 20 : tooltip?.tableId === table.id ? 15 : 10,
+                  filter: isDragging ? "drop-shadow(0 8px 16px hsl(var(--gold) / 0.4))" : isDragOver ? "drop-shadow(0 4px 12px hsl(var(--gold) / 0.6))" : undefined,
+                  transition: isDragging ? "none" : "filter 0.15s",
+                  userSelect: "none",
+                  borderRadius: "50%",
+                  outline: isDragOver ? "2px dashed hsl(var(--gold))" : "none",
+                  outlineOffset: "4px",
+                }}
+                onMouseDown={(e) => handleMouseDown(e, table.id)}
+                onClick={(e) => { e.stopPropagation(); handleTableClick(e, table.id); }}
+                onDragOver={(e) => handleTableDragOver(e, table.id)}
+                onDragLeave={handleTableDragLeave}
+                onDrop={(e) => handleTableDrop(e, table.id)}
+              >
                 <TableSVG
                   shape={table.shape}
                   capacity={table.capacity}
@@ -438,6 +569,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
                   unassignedGuests={unassignedGuests}
                   label={table.table_name}
                   size={TABLE_SIZE}
+                  highlightEmpty={isDragOver}
                   onSeatClick={(seatIndex) => {
                     if (seatIndex < tableGuests.length) {
                       onAssignGuest(tableGuests[seatIndex].id, null);
