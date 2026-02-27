@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Flower, MapPin, Calendar, Loader2, Images } from "lucide-react";
+import { mergeStyles, InviteStyles, DEFAULT_STYLES } from "@/lib/templates";
 
 interface EventData {
   id: string;
@@ -13,6 +14,9 @@ interface EventData {
   location: string;
   slug: string;
   is_active: boolean;
+  template: string;
+  custom_styles: Record<string, any>;
+  background_image_path: string | null;
 }
 
 interface Photo {
@@ -33,6 +37,8 @@ const InvitePage: React.FC = () => {
   const [form, setForm] = useState({ full_name: "", phone: "", side: "bride" });
   const [rsvpStatus, setRsvpStatus] = useState<"idle" | "submitting" | "confirmed" | "declined">("idle");
   const [lightboxPhoto, setLightboxPhoto] = useState<Photo | null>(null);
+  const [styles, setStyles] = useState<InviteStyles>(DEFAULT_STYLES);
+  const [bgImageUrl, setBgImageUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchEvent = async () => {
@@ -45,8 +51,16 @@ const InvitePage: React.FC = () => {
       if (error || !data) {
         setNotFound(true);
       } else {
-        setEvent(data);
-        fetchPhotos(data.id);
+        const ev = data as any;
+        setEvent(ev);
+        setStyles(mergeStyles(ev.template || "classic", ev.custom_styles || {}));
+        if (ev.background_image_path) {
+          const { data: urlData } = supabase.storage
+            .from("wedding-photos")
+            .getPublicUrl(ev.background_image_path);
+          setBgImageUrl(urlData.publicUrl);
+        }
+        fetchPhotos(ev.id);
       }
       setLoading(false);
     };
@@ -117,8 +131,8 @@ const InvitePage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen floral-bg flex items-center justify-center">
-        <Loader2 className="animate-spin text-gold w-8 h-8" />
+      <div className="min-h-screen flex items-center justify-center" style={{ background: styles.backgroundColor }}>
+        <Loader2 className="animate-spin w-8 h-8" style={{ color: styles.primaryColor }} />
       </div>
     );
   }
@@ -143,80 +157,117 @@ const InvitePage: React.FC = () => {
     year: "numeric",
   });
 
+  const cardBg = bgImageUrl
+    ? `rgba(255,255,255,${styles.cardOpacity})`
+    : `${styles.accentColor}15`;
+  const cardBorder = `1px solid ${styles.primaryColor}25`;
+
   return (
-    <div className="min-h-screen" style={{ background: "var(--gradient-hero)" }}>
+    <div
+      className="min-h-screen"
+      style={{
+        background: bgImageUrl
+          ? `url(${bgImageUrl}) center/cover no-repeat fixed`
+          : styles.backgroundColor,
+        color: styles.textColor,
+      }}
+    >
+      {/* Overlay for bg image readability */}
+      {bgImageUrl && (
+        <div className="fixed inset-0 pointer-events-none" style={{ background: `${styles.backgroundColor}88` }} />
+      )}
+
       {/* Falling petals */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        {[...Array(8)].map((_, i) => (
-          <div
-            key={i}
-            className="absolute text-xl animate-petal-fall"
-            style={{
-              left: `${5 + i * 12}%`,
-              animationDelay: `${i * 0.8}s`,
-              animationDuration: `${6 + i * 0.5}s`,
-              opacity: 0.15,
-            }}
-          >
-            🌸
-          </div>
-        ))}
-      </div>
+      {styles.showPetals && (
+        <div className="fixed inset-0 pointer-events-none overflow-hidden">
+          {[...Array(8)].map((_, i) => (
+            <div
+              key={i}
+              className="absolute text-xl animate-petal-fall"
+              style={{
+                left: `${5 + i * 12}%`,
+                animationDelay: `${i * 0.8}s`,
+                animationDuration: `${6 + i * 0.5}s`,
+                opacity: 0.15,
+              }}
+            >
+              {styles.petalEmoji}
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="relative max-w-2xl mx-auto px-4 py-12 md:py-16">
         {/* Header */}
         <div className="text-center animate-fade-up">
-          <div className="inline-flex items-center gap-2 bg-card/80 backdrop-blur-sm border border-border/50 rounded-full px-5 py-2 mb-8 shadow-soft">
-            <Flower size={14} className="text-gold" />
-            <span className="font-body text-xs tracking-widest uppercase text-muted-foreground">Wedding Invitation</span>
+          <div
+            className="inline-flex items-center gap-2 backdrop-blur-sm px-5 py-2 mb-8 shadow-soft"
+            style={{
+              background: `${styles.primaryColor}15`,
+              border: `1px solid ${styles.primaryColor}30`,
+              borderRadius: styles.borderRadius,
+            }}
+          >
+            <Flower size={14} style={{ color: styles.primaryColor }} />
+            <span className="text-xs tracking-widest uppercase" style={{ fontFamily: styles.fontBody, opacity: 0.7 }}>
+              Wedding Invitation
+            </span>
           </div>
 
           {/* Couple names */}
-          <h1 className="font-display text-6xl md:text-7xl text-foreground mb-3 leading-none">
+          <h1 className="text-6xl md:text-7xl mb-3 leading-none" style={{ fontFamily: styles.fontDisplay }}>
             {event.bride_name}
           </h1>
           <div className="flex items-center justify-center gap-4 my-4">
-            <div className="flex-1 divider-gold max-w-24" />
-            <span className="font-display text-2xl text-gold italic">&</span>
-            <div className="flex-1 divider-gold max-w-24" />
+            <div className="flex-1 max-w-24 h-px" style={{ background: `linear-gradient(90deg, transparent, ${styles.primaryColor}, transparent)` }} />
+            <span className="text-2xl italic" style={{ fontFamily: styles.fontDisplay, color: styles.primaryColor }}>&</span>
+            <div className="flex-1 max-w-24 h-px" style={{ background: `linear-gradient(90deg, transparent, ${styles.primaryColor}, transparent)` }} />
           </div>
-          <h1 className="font-display text-6xl md:text-7xl text-foreground leading-none">
+          <h1 className="text-6xl md:text-7xl leading-none" style={{ fontFamily: styles.fontDisplay }}>
             {event.groom_name}
           </h1>
 
-          <p className="font-display text-xl text-muted-foreground italic mt-6 mb-8">
+          <p className="text-xl italic mt-6 mb-8" style={{ fontFamily: styles.fontDisplay, opacity: 0.7 }}>
             {event.event_name}
           </p>
         </div>
 
         {/* Event details card */}
-        <div className="bg-card/90 backdrop-blur-sm rounded-3xl shadow-card border border-border/50 p-6 md:p-8 mb-6 animate-fade-up" style={{ animationDelay: "0.1s" }}>
+        <div
+          className="backdrop-blur-sm p-6 md:p-8 mb-6 animate-fade-up"
+          style={{ background: cardBg, border: cardBorder, borderRadius: styles.borderRadius, animationDelay: "0.1s" }}
+        >
           <div className="space-y-4">
             <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-xl bg-blush/30 flex items-center justify-center shrink-0">
-                <Calendar size={18} className="text-blush-deep" />
+              <div className="w-10 h-10 flex items-center justify-center shrink-0" style={{ background: `${styles.accentColor}30`, borderRadius: styles.borderRadius }}>
+                <Calendar size={18} style={{ color: styles.accentColor }} />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground font-body uppercase tracking-wider mb-0.5">Date</p>
-                <p className="font-display text-lg text-foreground">{formattedDate}</p>
+                <p className="text-xs uppercase tracking-wider mb-0.5" style={{ fontFamily: styles.fontBody, opacity: 0.6 }}>Date</p>
+                <p className="text-lg" style={{ fontFamily: styles.fontDisplay }}>{formattedDate}</p>
               </div>
             </div>
-            <div className="divider-gold" />
+            <div className="h-px" style={{ background: `linear-gradient(90deg, transparent, ${styles.primaryColor}, transparent)` }} />
             <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-xl bg-champagne flex items-center justify-center shrink-0">
-                <MapPin size={18} className="text-gold" />
+              <div className="w-10 h-10 flex items-center justify-center shrink-0" style={{ background: `${styles.primaryColor}20`, borderRadius: styles.borderRadius }}>
+                <MapPin size={18} style={{ color: styles.primaryColor }} />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground font-body uppercase tracking-wider mb-0.5">Location</p>
-                <p className="font-display text-lg text-foreground">{event.location}</p>
+                <p className="text-xs uppercase tracking-wider mb-0.5" style={{ fontFamily: styles.fontBody, opacity: 0.6 }}>Location</p>
+                <p className="text-lg" style={{ fontFamily: styles.fontDisplay }}>{event.location}</p>
               </div>
             </div>
           </div>
         </div>
 
         {/* Countdown */}
-        <div className="bg-card/90 backdrop-blur-sm rounded-3xl shadow-card border border-border/50 p-6 mb-6 animate-fade-up" style={{ animationDelay: "0.2s" }}>
-          <p className="text-center text-xs font-body text-muted-foreground uppercase tracking-widest mb-4">Counting down to the big day</p>
+        <div
+          className="backdrop-blur-sm p-6 mb-6 animate-fade-up"
+          style={{ background: cardBg, border: cardBorder, borderRadius: styles.borderRadius, animationDelay: "0.2s" }}
+        >
+          <p className="text-center text-xs uppercase tracking-widest mb-4" style={{ fontFamily: styles.fontBody, opacity: 0.6 }}>
+            Counting down to the big day
+          </p>
           <div className="grid grid-cols-4 gap-3">
             {[
               { value: countdown.days, label: "Days" },
@@ -224,64 +275,85 @@ const InvitePage: React.FC = () => {
               { value: countdown.minutes, label: "Minutes" },
               { value: countdown.seconds, label: "Seconds" },
             ].map(({ value, label }) => (
-              <div key={label} className="text-center bg-champagne rounded-2xl p-3">
-                <p className="font-display text-3xl font-bold text-foreground leading-none">
+              <div
+                key={label}
+                className="text-center p-3"
+                style={{ background: `${styles.primaryColor}15`, borderRadius: styles.borderRadius }}
+              >
+                <p className="text-3xl font-bold leading-none" style={{ fontFamily: styles.fontDisplay }}>
                   {String(value).padStart(2, "0")}
                 </p>
-                <p className="text-xs text-muted-foreground font-body mt-1 uppercase tracking-wider">{label}</p>
+                <p className="text-xs mt-1 uppercase tracking-wider" style={{ fontFamily: styles.fontBody, opacity: 0.6 }}>{label}</p>
               </div>
             ))}
           </div>
         </div>
 
         {/* RSVP Form */}
-        <div className="bg-card/90 backdrop-blur-sm rounded-3xl shadow-card border border-border/50 p-6 md:p-8 animate-fade-up" style={{ animationDelay: "0.3s" }}>
+        <div
+          className="backdrop-blur-sm p-6 md:p-8 animate-fade-up"
+          style={{ background: cardBg, border: cardBorder, borderRadius: styles.borderRadius, animationDelay: "0.3s" }}
+        >
           {rsvpStatus === "confirmed" ? (
             <div className="text-center py-4">
               <div className="text-4xl mb-3">🎉</div>
-              <h2 className="font-display text-2xl mb-2">See you there!</h2>
-              <p className="text-muted-foreground font-body">We're so excited to celebrate with you.</p>
+              <h2 className="text-2xl mb-2" style={{ fontFamily: styles.fontDisplay }}>See you there!</h2>
+              <p style={{ fontFamily: styles.fontBody, opacity: 0.7 }}>We're so excited to celebrate with you.</p>
             </div>
           ) : rsvpStatus === "declined" ? (
             <div className="text-center py-4">
               <div className="text-4xl mb-3">💐</div>
-              <h2 className="font-display text-2xl mb-2">Thank you</h2>
-              <p className="text-muted-foreground font-body">We'll miss you and appreciate you letting us know.</p>
+              <h2 className="text-2xl mb-2" style={{ fontFamily: styles.fontDisplay }}>Thank you</h2>
+              <p style={{ fontFamily: styles.fontBody, opacity: 0.7 }}>We'll miss you and appreciate you letting us know.</p>
             </div>
           ) : (
             <>
-              <h2 className="font-display text-2xl text-center mb-6">RSVP</h2>
+              <h2 className="text-2xl text-center mb-6" style={{ fontFamily: styles.fontDisplay }}>RSVP</h2>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-semibold mb-1.5">Your Full Name *</label>
+                  <label className="block text-sm font-semibold mb-1.5" style={{ fontFamily: styles.fontBody }}>Your Full Name *</label>
                   <input
                     value={form.full_name}
                     onChange={(e) => setForm({ ...form, full_name: e.target.value })}
                     placeholder="Enter your name"
-                    className="w-full px-4 py-3 rounded-xl border border-input bg-background/80 focus:outline-none focus:ring-2 focus:ring-ring transition-all"
+                    className="w-full px-4 py-3 focus:outline-none transition-all"
+                    style={{
+                      borderRadius: styles.borderRadius,
+                      border: `1px solid ${styles.primaryColor}30`,
+                      background: `${styles.backgroundColor}cc`,
+                      fontFamily: styles.fontBody,
+                    }}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold mb-1.5">Phone Number</label>
+                  <label className="block text-sm font-semibold mb-1.5" style={{ fontFamily: styles.fontBody }}>Phone Number</label>
                   <input
                     value={form.phone}
                     onChange={(e) => setForm({ ...form, phone: e.target.value })}
                     placeholder="+1 234 567 890"
-                    className="w-full px-4 py-3 rounded-xl border border-input bg-background/80 focus:outline-none focus:ring-2 focus:ring-ring transition-all"
+                    className="w-full px-4 py-3 focus:outline-none transition-all"
+                    style={{
+                      borderRadius: styles.borderRadius,
+                      border: `1px solid ${styles.primaryColor}30`,
+                      background: `${styles.backgroundColor}cc`,
+                      fontFamily: styles.fontBody,
+                    }}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold mb-1.5">You are invited as a guest of</label>
+                  <label className="block text-sm font-semibold mb-1.5" style={{ fontFamily: styles.fontBody }}>You are invited as a guest of</label>
                   <div className="grid grid-cols-2 gap-3">
                     {["bride", "groom"].map((s) => (
                       <button
                         key={s}
                         onClick={() => setForm({ ...form, side: s })}
-                        className={`py-2.5 rounded-xl border font-semibold font-body text-sm transition-all ${
-                          form.side === s
-                            ? "border-gold bg-champagne text-foreground"
-                            : "border-border hover:bg-muted text-muted-foreground"
-                        }`}
+                        className="py-2.5 font-semibold text-sm transition-all"
+                        style={{
+                          borderRadius: styles.borderRadius,
+                          border: `1px solid ${form.side === s ? styles.primaryColor : styles.primaryColor + "30"}`,
+                          background: form.side === s ? `${styles.primaryColor}20` : "transparent",
+                          fontFamily: styles.fontBody,
+                        }}
                       >
                         {s === "bride" ? "Bride's Guest" : "Groom's Guest"}
                       </button>
@@ -293,19 +365,30 @@ const InvitePage: React.FC = () => {
                 <button
                   onClick={() => handleRSVP("declined")}
                   disabled={rsvpStatus === "submitting"}
-                  className="py-3 rounded-xl border border-border text-foreground font-semibold font-body text-sm hover:bg-muted transition-all disabled:opacity-60"
+                  className="py-3 font-semibold text-sm transition-all disabled:opacity-60"
+                  style={{
+                    borderRadius: styles.borderRadius,
+                    border: `1px solid ${styles.primaryColor}30`,
+                    fontFamily: styles.fontBody,
+                  }}
                 >
                   Decline
                 </button>
                 <button
                   onClick={() => handleRSVP("confirmed")}
                   disabled={rsvpStatus === "submitting"}
-                  className="py-3 rounded-xl gradient-gold text-primary-foreground font-semibold font-body text-sm shadow-gold hover:opacity-90 transition-all disabled:opacity-60 flex items-center justify-center gap-2"
+                  className="py-3 font-semibold text-sm transition-all disabled:opacity-60 flex items-center justify-center gap-2"
+                  style={{
+                    borderRadius: styles.borderRadius,
+                    background: styles.primaryColor,
+                    color: "#fff",
+                    fontFamily: styles.fontBody,
+                  }}
                 >
                   {rsvpStatus === "submitting" ? (
                     <Loader2 size={15} className="animate-spin" />
                   ) : null}
-                  {rsvpStatus === "submitting" ? "Sending..." : "I'll be there! 🌸"}
+                  {rsvpStatus === "submitting" ? "Sending..." : `I'll be there! ${styles.petalEmoji}`}
                 </button>
               </div>
             </>
@@ -314,17 +397,21 @@ const InvitePage: React.FC = () => {
 
         {/* Photo Gallery */}
         {photos.length > 0 && (
-          <div className="bg-card/90 backdrop-blur-sm rounded-3xl shadow-card border border-border/50 p-6 md:p-8 animate-fade-up" style={{ animationDelay: "0.4s" }}>
+          <div
+            className="backdrop-blur-sm p-6 md:p-8 mt-6 animate-fade-up"
+            style={{ background: cardBg, border: cardBorder, borderRadius: styles.borderRadius, animationDelay: "0.4s" }}
+          >
             <div className="flex items-center gap-3 mb-5">
-              <Images size={18} className="text-gold" />
-              <h2 className="font-display text-2xl">Our Gallery</h2>
+              <Images size={18} style={{ color: styles.primaryColor }} />
+              <h2 className="text-2xl" style={{ fontFamily: styles.fontDisplay }}>Our Gallery</h2>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {photos.map((photo) => (
                 <button
                   key={photo.id}
                   onClick={() => setLightboxPhoto(photo)}
-                  className="aspect-square rounded-2xl overflow-hidden group relative"
+                  className="aspect-square overflow-hidden group relative"
+                  style={{ borderRadius: styles.borderRadius }}
                 >
                   <img
                     src={photo.url}
@@ -334,7 +421,7 @@ const InvitePage: React.FC = () => {
                   />
                   {photo.caption && (
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-3 translate-y-full group-hover:translate-y-0 transition-transform duration-300">
-                      <p className="text-white text-xs font-body">{photo.caption}</p>
+                      <p className="text-white text-xs" style={{ fontFamily: styles.fontBody }}>{photo.caption}</p>
                     </div>
                   )}
                 </button>
@@ -346,12 +433,12 @@ const InvitePage: React.FC = () => {
         {/* Footer */}
         <div className="text-center mt-10">
           <div className="flex items-center justify-center gap-2 mb-2">
-            <div className="divider-gold w-16" />
-            <Flower size={14} className="text-gold" />
-            <div className="divider-gold w-16" />
+            <div className="w-16 h-px" style={{ background: `linear-gradient(90deg, transparent, ${styles.primaryColor}, transparent)` }} />
+            <Flower size={14} style={{ color: styles.primaryColor }} />
+            <div className="w-16 h-px" style={{ background: `linear-gradient(90deg, transparent, ${styles.primaryColor}, transparent)` }} />
           </div>
-          <p className="text-xs text-muted-foreground font-body">
-            Created with <span className="text-gold font-semibold">DreamFlower Invitations</span>
+          <p className="text-xs" style={{ fontFamily: styles.fontBody, opacity: 0.6 }}>
+            Created with <span style={{ color: styles.primaryColor, fontWeight: 600 }}>DreamFlower Invitations</span>
           </p>
         </div>
 
@@ -365,14 +452,16 @@ const InvitePage: React.FC = () => {
               <img
                 src={lightboxPhoto.url}
                 alt={lightboxPhoto.caption || "Wedding photo"}
-                className="w-full rounded-2xl shadow-2xl max-h-[85vh] object-contain"
+                className="w-full shadow-2xl max-h-[85vh] object-contain"
+                style={{ borderRadius: styles.borderRadius }}
               />
               {lightboxPhoto.caption && (
-                <p className="text-white/80 text-sm font-body text-center mt-3">{lightboxPhoto.caption}</p>
+                <p className="text-white/80 text-sm text-center mt-3" style={{ fontFamily: styles.fontBody }}>{lightboxPhoto.caption}</p>
               )}
               <button
                 onClick={() => setLightboxPhoto(null)}
-                className="absolute -top-4 -right-4 w-10 h-10 bg-card rounded-full flex items-center justify-center shadow-lg text-foreground hover:bg-muted transition-colors"
+                className="absolute -top-4 -right-4 w-10 h-10 rounded-full flex items-center justify-center shadow-lg transition-colors"
+                style={{ background: styles.backgroundColor, color: styles.textColor }}
               >
                 ✕
               </button>

@@ -51,8 +51,10 @@ export type Database = {
       }
       events: {
         Row: {
+          background_image_path: string | null
           bride_name: string
           created_at: string
+          custom_styles: Json
           event_date: string
           event_name: string
           groom_name: string
@@ -60,12 +62,15 @@ export type Database = {
           is_active: boolean
           location: string
           slug: string
+          template: string
           updated_at: string
           user_id: string
         }
         Insert: {
+          background_image_path?: string | null
           bride_name: string
           created_at?: string
+          custom_styles?: Json
           event_date: string
           event_name: string
           groom_name: string
@@ -73,12 +78,15 @@ export type Database = {
           is_active?: boolean
           location: string
           slug: string
+          template?: string
           updated_at?: string
           user_id: string
         }
         Update: {
+          background_image_path?: string | null
           bride_name?: string
           created_at?: string
+          custom_styles?: Json
           event_date?: string
           event_name?: string
           groom_name?: string
@@ -86,6 +94,7 @@ export type Database = {
           is_active?: boolean
           location?: string
           slug?: string
+          template?: string
           updated_at?: string
           user_id?: string
         }
