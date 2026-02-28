@@ -47,6 +47,12 @@ function getInitialPositions(tables: SeatingTable[], canvasW: number, canvasH: n
   return positions;
 }
 
+/* ─── Extract table number from label ─── */
+const getTableNumber = (label: string): string => {
+  const match = label.match(/\d+/);
+  return match ? match[0] : label.charAt(0);
+};
+
 /* ─── Inline SVG table visuals with clickable seats ─── */
 const TableSVG: React.FC<{
   shape: string;
@@ -81,13 +87,13 @@ const TableSVG: React.FC<{
       return seats;
     }
     if (shape === "round") {
-      const r = 30;
+      const r = 32;
       return Array.from({ length: capacity }, (_, i) => {
         const angle = (2 * Math.PI * i) / capacity - Math.PI / 2;
         return { x: 50 + r * Math.cos(angle), y: 50 + r * Math.sin(angle) };
       });
     }
-    const half = 16, gap = 14, perSide = Math.ceil(capacity / 4);
+    const half = 18, gap = 14, perSide = Math.ceil(capacity / 4);
     const seats: { x: number; y: number }[] = [];
     const cx = 50, cy = 50;
     for (let i = 0; i < perSide && seats.length < capacity; i++) { const totalW = (perSide - 1) * gap; seats.push({ x: cx - totalW / 2 + i * gap, y: cy - half - 9 }); }
@@ -98,12 +104,35 @@ const TableSVG: React.FC<{
   };
 
   const seats = getSeatPositions();
-  const seatRadius = shape === "head" ? 7 : shape === "round" ? 7 : 6;
+  const seatRadius = 6;
   const isHead = shape === "head";
+  const tableNum = getTableNumber(label);
 
   return (
     <div style={{ position: "relative", width: size, height: size }}>
       <svg viewBox="0 0 100 100" width={size} height={size}>
+        {/* Modern table surface */}
+        {shape === "head" ? (
+          <>
+            <rect x="18" y="33" width="64" height="24" rx="12" fill="hsl(var(--card))" stroke="hsl(var(--border))" strokeWidth="1.5" />
+            <rect x="20" y="35" width="60" height="20" rx="10" fill="hsl(var(--muted))" />
+          </>
+        ) : shape === "round" ? (
+          <>
+            <circle cx="50" cy="50" r="19" fill="hsl(var(--card))" stroke="hsl(var(--border))" strokeWidth="1.5" />
+            <circle cx="50" cy="50" r="16" fill="hsl(var(--muted))" />
+          </>
+        ) : (
+          <>
+            <rect x={50 - 17} y={50 - 17} width={34} height={34} rx="6" fill="hsl(var(--card))" stroke="hsl(var(--border))" strokeWidth="1.5" />
+            <rect x={50 - 14} y={50 - 14} width={28} height={28} rx="4" fill="hsl(var(--muted))" />
+          </>
+        )}
+        {/* Bold large table number */}
+        <text x="50" y={shape === "head" ? "49" : "54"} textAnchor="middle" fontSize="14" fontWeight="800" fontFamily="'Inter', system-ui, sans-serif" fill="hsl(var(--foreground))" style={{ pointerEvents: "none" }}>
+          {tableNum}
+        </text>
+        {/* Modern chair dots */}
         {seats.map((s, i) => {
           const isOccupied = i < occupied;
           const guest = tableGuests[i];
@@ -112,23 +141,27 @@ const TableSVG: React.FC<{
           const isDropTarget = highlightEmpty && !isOccupied && occupied < capacity;
           return (
             <g key={i} style={{ cursor: (isOccupied || canAssign) ? "pointer" : "default" }} onMouseDown={(e) => { if (isOccupied || canAssign) e.stopPropagation(); }} onClick={(e) => { e.stopPropagation(); if (isOccupied || canAssign) onSeatClick(i); }}>
-              <circle cx={s.x} cy={s.y} r={isSpecialSeat ? 9 : seatRadius}
-                fill={isOccupied ? (isSpecialSeat ? "hsl(var(--gold))" : tableColor) : isDropTarget ? "hsl(var(--gold) / 0.3)" : canAssign ? "hsl(var(--muted))" : "hsl(var(--muted))"}
-                stroke={isDropTarget ? "hsl(var(--gold))" : isSpecialSeat ? tableColor : canAssign && !isOccupied ? "hsl(var(--gold))" : "hsl(var(--border))"}
-                strokeWidth={isDropTarget ? "2.5" : isSpecialSeat ? "2" : canAssign && !isOccupied ? "1.8" : "1.2"}
-                opacity={isOccupied ? 1 : isDropTarget ? 0.9 : canAssign ? 0.7 : 0.35}
-                strokeDasharray={isDropTarget ? "3 2" : undefined}
+              {/* Chair body - modern rounded square */}
+              <rect
+                x={s.x - seatRadius} y={s.y - seatRadius}
+                width={seatRadius * 2} height={seatRadius * 2}
+                rx="3"
+                fill={isOccupied ? tableColor : isDropTarget ? "hsl(var(--gold) / 0.25)" : "hsl(var(--card))"}
+                stroke={isDropTarget ? "hsl(var(--gold))" : isOccupied ? tableColor : "hsl(var(--border))"}
+                strokeWidth={isDropTarget ? "2" : isOccupied ? "1.5" : "1"}
+                opacity={isOccupied ? 1 : isDropTarget ? 0.9 : canAssign ? 0.7 : 0.4}
+                strokeDasharray={isDropTarget ? "2 1.5" : undefined}
               />
-              {isSpecialSeat && (
-                <text x={s.x} y={s.y + 1.5} textAnchor="middle" fontSize="5" fill={isOccupied ? "hsl(var(--primary-foreground))" : "hsl(var(--muted-foreground))"} style={{ pointerEvents: "none" }}>♥</text>
+              {isSpecialSeat && isOccupied && (
+                <text x={s.x} y={s.y + 1.5} textAnchor="middle" fontSize="5" fill="hsl(var(--primary-foreground))" style={{ pointerEvents: "none" }}>♥</text>
               )}
-              {canAssign && !isOccupied && !isSpecialSeat && (
-                <text x={s.x} y={s.y + 1.5} textAnchor="middle" fontSize="6" fill="hsl(var(--gold))" fontWeight="bold" style={{ pointerEvents: "none" }}>+</text>
+              {canAssign && !isOccupied && (
+                <text x={s.x} y={s.y + 1.5} textAnchor="middle" fontSize="5" fill="hsl(var(--muted-foreground))" fontWeight="bold" style={{ pointerEvents: "none" }}>+</text>
               )}
               {isOccupied && guest && (
                 <>
                   <title>{guest.full_name} (drag to move, click to remove)</title>
-                  <text x={s.x} y={s.y + seatRadius + 7} textAnchor="middle" fontSize="3.5" fill="hsl(var(--foreground))" style={{ pointerEvents: "none" }} fontFamily="'Inter', sans-serif">
+                  <text x={s.x} y={s.y + seatRadius + 7} textAnchor="middle" fontSize="3" fill="hsl(var(--muted-foreground))" style={{ pointerEvents: "none" }} fontFamily="'Inter', sans-serif">
                     {guest.full_name.length > 10 ? guest.full_name.slice(0, 9) + "…" : guest.full_name}
                   </text>
                 </>
@@ -136,19 +169,6 @@ const TableSVG: React.FC<{
             </g>
           );
         })}
-        {shape === "head" ? (
-          <>
-            <rect x="15" y="35" width="70" height="20" rx="6" fill="hsl(var(--champagne))" stroke={tableColor} strokeWidth="2.5" />
-            <text x="50" y="49" textAnchor="middle" fontSize="6" fill={tableColor} style={{ pointerEvents: "none" }}>♥</text>
-          </>
-        ) : shape === "round" ? (
-          <circle cx="50" cy="50" r="20" fill="hsl(var(--champagne))" stroke={tableColor} strokeWidth="2.5" />
-        ) : (
-          <rect x={50 - 16} y={50 - 16} width={32} height={32} rx="4" fill="hsl(var(--champagne))" stroke={tableColor} strokeWidth="2.5" />
-        )}
-        <text x="50" y={shape === "head" ? "46" : "54"} textAnchor="middle" fontSize="7" fontFamily="'Playfair Display', serif" fill="hsl(var(--foreground))">
-          {label.length > 8 ? label.slice(0, 7) + "…" : label}
-        </text>
       </svg>
       {/* Invisible drag handles over occupied seats */}
       {seats.map((s, i) => {
