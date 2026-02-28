@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import DashboardLayout from "@/components/DashboardLayout";
 import FloorPlanView from "@/components/FloorPlanView";
 import { toast } from "sonner";
-import { Plus, Trash2, Users, X, Loader2, LayoutGrid, Map } from "lucide-react";
+import { Plus, Minus, Trash2, Users, X, Loader2, LayoutGrid, Map } from "lucide-react";
 
 interface SeatingTable {
   id: string;
@@ -25,7 +25,13 @@ interface Guest {
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/* ─── Top-view seat dots around a round table ─── */
+/* ─── Extract number from table name ─── */
+const getTableNumber = (label: string): string => {
+  const match = label.match(/\d+/);
+  return match ? match[0] : label.charAt(0);
+};
+
+/* ─── Modern round table with bold number ─── */
 const RoundTableView: React.FC<{ capacity: number; occupied: number; label: string }> = ({ capacity, occupied, label }) => {
   const r = 52;
   const seats = Array.from({ length: capacity }, (_, i) => {
@@ -36,42 +42,56 @@ const RoundTableView: React.FC<{ capacity: number; occupied: number; label: stri
   const tableColor = pct >= 1 ? "hsl(0 72% 51%)" : pct >= 0.8 ? "hsl(38 92% 50%)" : "hsl(var(--gold))";
   return (
     <svg viewBox="0 0 160 160" className="w-full h-full">
-      <circle cx="80" cy="80" r="34" fill="hsl(var(--champagne))" stroke={tableColor} strokeWidth="3" />
-      <text x="80" y="84" textAnchor="middle" fontSize="9" fontFamily="'Playfair Display', serif" fill="hsl(var(--foreground))">{label.length > 9 ? label.slice(0, 8) + "…" : label}</text>
-      {seats.map((s, i) => (<circle key={i} cx={s.x} cy={s.y} r="10" fill={i < occupied ? tableColor : "hsl(var(--muted))"} stroke="hsl(var(--border))" strokeWidth="1.5" opacity={i < occupied ? 1 : 0.5} />))}
+      <circle cx="80" cy="80" r="30" fill="hsl(var(--card))" stroke="hsl(var(--border))" strokeWidth="2" />
+      <circle cx="80" cy="80" r="25" fill="hsl(var(--muted))" />
+      <text x="80" y="88" textAnchor="middle" fontSize="24" fontWeight="800" fontFamily="'Inter', system-ui, sans-serif" fill="hsl(var(--foreground))">{getTableNumber(label)}</text>
+      {seats.map((s, i) => (
+        <rect key={i} x={s.x - 9} y={s.y - 9} width="18" height="18" rx="5"
+          fill={i < occupied ? tableColor : "hsl(var(--card))"}
+          stroke={i < occupied ? tableColor : "hsl(var(--border))"}
+          strokeWidth={i < occupied ? "1.5" : "1"}
+          opacity={i < occupied ? 1 : 0.45}
+        />
+      ))}
     </svg>
   );
 };
 
-/* ─── Top-view seat dots around a square table ─── */
+/* ─── Modern square table with bold number ─── */
 const SquareTableView: React.FC<{ capacity: number; occupied: number; label: string }> = ({ capacity, occupied, label }) => {
   const pct = capacity > 0 ? occupied / capacity : 0;
   const tableColor = pct >= 1 ? "hsl(0 72% 51%)" : pct >= 0.8 ? "hsl(38 92% 50%)" : "hsl(var(--gold))";
   const perSide = Math.ceil(capacity / 4);
   const seats: { x: number; y: number }[] = [];
-  const cx = 80, cy = 80, half = 30, gap = 20;
+  const cx = 80, cy = 80, half = 28, gap = 20;
   for (let i = 0; i < perSide && seats.length < capacity; i++) { const totalW = (perSide - 1) * gap; seats.push({ x: cx - totalW / 2 + i * gap, y: cy - half - 14 }); }
   for (let i = 0; i < perSide && seats.length < capacity; i++) { const totalH = (perSide - 1) * gap; seats.push({ x: cx + half + 14, y: cy - totalH / 2 + i * gap }); }
   for (let i = 0; i < perSide && seats.length < capacity; i++) { const totalW = (perSide - 1) * gap; seats.push({ x: cx - totalW / 2 + i * gap, y: cy + half + 14 }); }
   for (let i = 0; i < perSide && seats.length < capacity; i++) { const totalH = (perSide - 1) * gap; seats.push({ x: cx - half - 14, y: cy - totalH / 2 + i * gap }); }
   return (
     <svg viewBox="0 0 160 160" className="w-full h-full">
-      <rect x={cx - half} y={cy - half} width={half * 2} height={half * 2} rx="6" fill="hsl(var(--champagne))" stroke={tableColor} strokeWidth="3" />
-      <text x="80" y="84" textAnchor="middle" fontSize="9" fontFamily="'Playfair Display', serif" fill="hsl(var(--foreground))">{label.length > 9 ? label.slice(0, 8) + "…" : label}</text>
-      {seats.map((s, i) => (<circle key={i} cx={s.x} cy={s.y} r="9" fill={i < occupied ? tableColor : "hsl(var(--muted))"} stroke="hsl(var(--border))" strokeWidth="1.5" opacity={i < occupied ? 1 : 0.5} />))}
+      <rect x={cx - 24} y={cy - 24} width="48" height="48" rx="8" fill="hsl(var(--card))" stroke="hsl(var(--border))" strokeWidth="2" />
+      <rect x={cx - 20} y={cy - 20} width="40" height="40" rx="6" fill="hsl(var(--muted))" />
+      <text x="80" y="88" textAnchor="middle" fontSize="24" fontWeight="800" fontFamily="'Inter', system-ui, sans-serif" fill="hsl(var(--foreground))">{getTableNumber(label)}</text>
+      {seats.map((s, i) => (
+        <rect key={i} x={s.x - 8} y={s.y - 8} width="16" height="16" rx="4"
+          fill={i < occupied ? tableColor : "hsl(var(--card))"}
+          stroke={i < occupied ? tableColor : "hsl(var(--border))"}
+          strokeWidth={i < occupied ? "1.5" : "1"}
+          opacity={i < occupied ? 1 : 0.45}
+        />
+      ))}
     </svg>
   );
 };
 
-/* ─── Top-view bride & groom head table ─── */
+/* ─── Modern head table with bold number ─── */
 const HeadTableView: React.FC<{ capacity: number; occupied: number; label: string }> = ({ capacity, occupied, label }) => {
   const pct = capacity > 0 ? occupied / capacity : 0;
   const tableColor = pct >= 1 ? "hsl(0 72% 51%)" : pct >= 0.8 ? "hsl(38 92% 50%)" : "hsl(var(--gold))";
   const seats: { x: number; y: number; isSpecial: boolean }[] = [];
-  // Two special seats (bride & groom) at center back
   seats.push({ x: 65, y: 50, isSpecial: true });
   seats.push({ x: 95, y: 50, isSpecial: true });
-  // Remaining seats along the front
   const remaining = capacity - 2;
   if (remaining > 0) {
     const gap = Math.min(20, 120 / (remaining + 1));
@@ -82,15 +102,20 @@ const HeadTableView: React.FC<{ capacity: number; occupied: number; label: strin
   }
   return (
     <svg viewBox="0 0 160 160" className="w-full h-full">
-      {/* Elongated table */}
-      <rect x="30" y="60" width="100" height="35" rx="8" fill="hsl(var(--champagne))" stroke={tableColor} strokeWidth="3" />
-      {/* Heart decoration */}
-      <text x="80" y="82" textAnchor="middle" fontSize="11" fill={tableColor}>♥</text>
-      <text x="80" y="72" textAnchor="middle" fontSize="7" fontFamily="'Playfair Display', serif" fill="hsl(var(--foreground))">{label.length > 12 ? label.slice(0, 11) + "…" : label}</text>
+      <rect x="30" y="62" width="100" height="30" rx="12" fill="hsl(var(--card))" stroke="hsl(var(--border))" strokeWidth="2" />
+      <rect x="34" y="66" width="92" height="22" rx="10" fill="hsl(var(--muted))" />
+      <text x="80" y="82" textAnchor="middle" fontSize="16" fontWeight="800" fontFamily="'Inter', system-ui, sans-serif" fill="hsl(var(--foreground))">{getTableNumber(label)}</text>
       {seats.map((s, i) => (
         <g key={i}>
-          <circle cx={s.x} cy={s.y} r={s.isSpecial ? 12 : 9} fill={i < occupied ? (s.isSpecial ? "hsl(var(--gold))" : tableColor) : "hsl(var(--muted))"} stroke={s.isSpecial ? tableColor : "hsl(var(--border))"} strokeWidth={s.isSpecial ? "2.5" : "1.5"} opacity={i < occupied ? 1 : 0.5} />
-          {s.isSpecial && <text x={s.x} y={s.y + 1} textAnchor="middle" fontSize="7" fill={i < occupied ? "hsl(var(--primary-foreground))" : "hsl(var(--muted-foreground))"} style={{ pointerEvents: "none" }}>♥</text>}
+          <rect x={s.x - (s.isSpecial ? 10 : 8)} y={s.y - (s.isSpecial ? 10 : 8)}
+            width={s.isSpecial ? 20 : 16} height={s.isSpecial ? 20 : 16}
+            rx={s.isSpecial ? 6 : 4}
+            fill={i < occupied ? (s.isSpecial ? "hsl(var(--gold))" : tableColor) : "hsl(var(--card))"}
+            stroke={i < occupied ? (s.isSpecial ? tableColor : tableColor) : "hsl(var(--border))"}
+            strokeWidth={s.isSpecial ? "2" : "1"}
+            opacity={i < occupied ? 1 : 0.45}
+          />
+          {s.isSpecial && <text x={s.x} y={s.y + 2} textAnchor="middle" fontSize="8" fill={i < occupied ? "hsl(var(--primary-foreground))" : "hsl(var(--muted-foreground))"} style={{ pointerEvents: "none" }}>♥</text>}
         </g>
       ))}
     </svg>
@@ -153,6 +178,15 @@ const TablesPage: React.FC = () => {
     fetchData();
   };
 
+  const handleUpdateCapacity = async (tableId: string, newCapacity: number) => {
+    if (newCapacity < 1 || newCapacity > 50) return;
+    const tableGuests = getTableGuests(tableId);
+    if (newCapacity < tableGuests.length) return toast.error("Remove guests first");
+    const { error } = await supabase.from("seating_tables").update({ capacity: newCapacity } as any).eq("id", tableId);
+    if (error) { toast.error(error.message); return; }
+    fetchData();
+  };
+
   const getTableGuests = (tableId: string) => guests.filter((g) => g.table_id === tableId);
   const unassignedGuests = guests.filter((g) => !g.table_id);
 
@@ -210,12 +244,22 @@ const TablesPage: React.FC = () => {
                       <RoundTableView capacity={table.capacity} occupied={occupied} label={table.table_name} />
                     )}
                   </div>
-                  <div className="flex items-start justify-between">
+                  <div className="flex items-center justify-between">
                     <div>
-                      <h3 className="font-display text-base font-semibold leading-tight">{table.table_name}</h3>
+                      <h3 className="font-display text-lg font-bold leading-tight">Table {getTableNumber(table.table_name)}</h3>
                       <p className="text-muted-foreground font-body text-xs mt-0.5">{occupied}/{table.capacity} seats · {table.shape}</p>
                     </div>
                     <button onClick={() => handleDeleteTable(table.id)} className="text-muted-foreground hover:text-destructive transition-colors p-1"><Trash2 size={14} /></button>
+                  </div>
+                  {/* Chair capacity editor */}
+                  <div className="flex items-center justify-center gap-3 py-1">
+                    <button onClick={() => handleUpdateCapacity(table.id, table.capacity - 1)} disabled={table.capacity <= 1 || table.capacity <= occupied} className="w-7 h-7 rounded-lg border border-border bg-muted flex items-center justify-center text-foreground hover:bg-accent disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                      <Minus size={12} />
+                    </button>
+                    <span className="font-body text-sm font-semibold text-foreground min-w-[60px] text-center">{table.capacity} chairs</span>
+                    <button onClick={() => handleUpdateCapacity(table.id, table.capacity + 1)} disabled={table.capacity >= 50} className="w-7 h-7 rounded-lg border border-border bg-muted flex items-center justify-center text-foreground hover:bg-accent disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                      <Plus size={12} />
+                    </button>
                   </div>
                   <div className="space-y-1 flex-1">
                     {tableGuests.map((g) => (
