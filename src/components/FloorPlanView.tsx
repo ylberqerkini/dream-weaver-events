@@ -57,7 +57,9 @@ const TableSVG: React.FC<{
   size: number;
   onSeatClick: (seatIndex: number) => void;
   highlightEmpty?: boolean;
-}> = ({ shape, capacity, tableGuests, unassignedGuests, label, size, onSeatClick, highlightEmpty }) => {
+  onGuestDragStart?: (e: React.DragEvent, guestId: string, guestName: string) => void;
+  onGuestDragEnd?: () => void;
+}> = ({ shape, capacity, tableGuests, unassignedGuests, label, size, onSeatClick, highlightEmpty, onGuestDragStart, onGuestDragEnd }) => {
   const occupied = tableGuests.length;
   const pct = capacity > 0 ? occupied / capacity : 0;
   const tableColor =
@@ -100,53 +102,88 @@ const TableSVG: React.FC<{
   const isHead = shape === "head";
 
   return (
-    <svg viewBox="0 0 100 100" width={size} height={size}>
+    <div style={{ position: "relative", width: size, height: size }}>
+      <svg viewBox="0 0 100 100" width={size} height={size}>
+        {seats.map((s, i) => {
+          const isOccupied = i < occupied;
+          const guest = tableGuests[i];
+          const canAssign = !isOccupied && unassignedGuests.length > 0;
+          const isSpecialSeat = isHead && i < 2;
+          const isDropTarget = highlightEmpty && !isOccupied && occupied < capacity;
+          return (
+            <g key={i} style={{ cursor: (isOccupied || canAssign) ? "pointer" : "default" }} onMouseDown={(e) => { if (isOccupied || canAssign) e.stopPropagation(); }} onClick={(e) => { e.stopPropagation(); if (isOccupied || canAssign) onSeatClick(i); }}>
+              <circle cx={s.x} cy={s.y} r={isSpecialSeat ? 9 : seatRadius}
+                fill={isOccupied ? (isSpecialSeat ? "hsl(var(--gold))" : tableColor) : isDropTarget ? "hsl(var(--gold) / 0.3)" : canAssign ? "hsl(var(--muted))" : "hsl(var(--muted))"}
+                stroke={isDropTarget ? "hsl(var(--gold))" : isSpecialSeat ? tableColor : canAssign && !isOccupied ? "hsl(var(--gold))" : "hsl(var(--border))"}
+                strokeWidth={isDropTarget ? "2.5" : isSpecialSeat ? "2" : canAssign && !isOccupied ? "1.8" : "1.2"}
+                opacity={isOccupied ? 1 : isDropTarget ? 0.9 : canAssign ? 0.7 : 0.35}
+                strokeDasharray={isDropTarget ? "3 2" : undefined}
+              />
+              {isSpecialSeat && (
+                <text x={s.x} y={s.y + 1.5} textAnchor="middle" fontSize="5" fill={isOccupied ? "hsl(var(--primary-foreground))" : "hsl(var(--muted-foreground))"} style={{ pointerEvents: "none" }}>♥</text>
+              )}
+              {canAssign && !isOccupied && !isSpecialSeat && (
+                <text x={s.x} y={s.y + 1.5} textAnchor="middle" fontSize="6" fill="hsl(var(--gold))" fontWeight="bold" style={{ pointerEvents: "none" }}>+</text>
+              )}
+              {isOccupied && guest && (
+                <>
+                  <title>{guest.full_name} (drag to move, click to remove)</title>
+                  <text x={s.x} y={s.y + seatRadius + 7} textAnchor="middle" fontSize="3.5" fill="hsl(var(--foreground))" style={{ pointerEvents: "none" }} fontFamily="'Inter', sans-serif">
+                    {guest.full_name.length > 10 ? guest.full_name.slice(0, 9) + "…" : guest.full_name}
+                  </text>
+                </>
+              )}
+            </g>
+          );
+        })}
+        {shape === "head" ? (
+          <>
+            <rect x="15" y="35" width="70" height="20" rx="6" fill="hsl(var(--champagne))" stroke={tableColor} strokeWidth="2.5" />
+            <text x="50" y="49" textAnchor="middle" fontSize="6" fill={tableColor} style={{ pointerEvents: "none" }}>♥</text>
+          </>
+        ) : shape === "round" ? (
+          <circle cx="50" cy="50" r="20" fill="hsl(var(--champagne))" stroke={tableColor} strokeWidth="2.5" />
+        ) : (
+          <rect x={50 - 16} y={50 - 16} width={32} height={32} rx="4" fill="hsl(var(--champagne))" stroke={tableColor} strokeWidth="2.5" />
+        )}
+        <text x="50" y={shape === "head" ? "46" : "54"} textAnchor="middle" fontSize="7" fontFamily="'Playfair Display', serif" fill="hsl(var(--foreground))">
+          {label.length > 8 ? label.slice(0, 7) + "…" : label}
+        </text>
+      </svg>
+      {/* Invisible drag handles over occupied seats */}
       {seats.map((s, i) => {
-        const isOccupied = i < occupied;
+        if (i >= occupied) return null;
         const guest = tableGuests[i];
-        const canAssign = !isOccupied && unassignedGuests.length > 0;
-        const isSpecialSeat = isHead && i < 2;
-        const isDropTarget = highlightEmpty && !isOccupied && occupied < capacity;
+        if (!guest) return null;
+        const r = (isHead && i < 2) ? 9 : seatRadius;
+        const pxX = (s.x / 100) * size - r * (size / 100);
+        const pxY = (s.y / 100) * size - r * (size / 100);
+        const pxSize = r * 2 * (size / 100);
         return (
-          <g key={i} style={{ cursor: (isOccupied || canAssign) ? "pointer" : "default" }} onMouseDown={(e) => { if (isOccupied || canAssign) e.stopPropagation(); }} onClick={(e) => { e.stopPropagation(); if (isOccupied || canAssign) onSeatClick(i); }}>
-            <circle cx={s.x} cy={s.y} r={isSpecialSeat ? 9 : seatRadius}
-              fill={isOccupied ? (isSpecialSeat ? "hsl(var(--gold))" : tableColor) : isDropTarget ? "hsl(var(--gold) / 0.3)" : canAssign ? "hsl(var(--muted))" : "hsl(var(--muted))"}
-              stroke={isDropTarget ? "hsl(var(--gold))" : isSpecialSeat ? tableColor : canAssign && !isOccupied ? "hsl(var(--gold))" : "hsl(var(--border))"}
-              strokeWidth={isDropTarget ? "2.5" : isSpecialSeat ? "2" : canAssign && !isOccupied ? "1.8" : "1.2"}
-              opacity={isOccupied ? 1 : isDropTarget ? 0.9 : canAssign ? 0.7 : 0.35}
-              strokeDasharray={isDropTarget ? "3 2" : undefined}
-            />
-            {isSpecialSeat && (
-              <text x={s.x} y={s.y + 1.5} textAnchor="middle" fontSize="5" fill={isOccupied ? "hsl(var(--primary-foreground))" : "hsl(var(--muted-foreground))"} style={{ pointerEvents: "none" }}>♥</text>
-            )}
-            {canAssign && !isOccupied && !isSpecialSeat && (
-              <text x={s.x} y={s.y + 1.5} textAnchor="middle" fontSize="6" fill="hsl(var(--gold))" fontWeight="bold" style={{ pointerEvents: "none" }}>+</text>
-            )}
-            {isOccupied && guest && (
-              <>
-                <title>{guest.full_name} (click to remove)</title>
-                <text x={s.x} y={s.y + seatRadius + 7} textAnchor="middle" fontSize="3.5" fill="hsl(var(--foreground))" style={{ pointerEvents: "none" }} fontFamily="'Inter', sans-serif">
-                  {guest.full_name.length > 10 ? guest.full_name.slice(0, 9) + "…" : guest.full_name}
-                </text>
-              </>
-            )}
-          </g>
+          <div
+            key={`drag-${i}`}
+            draggable
+            onDragStart={(e) => {
+              e.stopPropagation();
+              onGuestDragStart?.(e, guest.id, guest.full_name);
+            }}
+            onDragEnd={onGuestDragEnd}
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{
+              position: "absolute",
+              left: pxX,
+              top: pxY,
+              width: pxSize,
+              height: pxSize,
+              borderRadius: "50%",
+              cursor: "grab",
+              zIndex: 2,
+            }}
+            title={`Drag ${guest.full_name} to another table`}
+          />
         );
       })}
-      {shape === "head" ? (
-        <>
-          <rect x="15" y="35" width="70" height="20" rx="6" fill="hsl(var(--champagne))" stroke={tableColor} strokeWidth="2.5" />
-          <text x="50" y="49" textAnchor="middle" fontSize="6" fill={tableColor} style={{ pointerEvents: "none" }}>♥</text>
-        </>
-      ) : shape === "round" ? (
-        <circle cx="50" cy="50" r="20" fill="hsl(var(--champagne))" stroke={tableColor} strokeWidth="2.5" />
-      ) : (
-        <rect x={50 - 16} y={50 - 16} width={32} height={32} rx="4" fill="hsl(var(--champagne))" stroke={tableColor} strokeWidth="2.5" />
-      )}
-      <text x="50" y={shape === "head" ? "46" : "54"} textAnchor="middle" fontSize="7" fontFamily="'Playfair Display', serif" fill="hsl(var(--foreground))">
-        {label.length > 8 ? label.slice(0, 7) + "…" : label}
-      </text>
-    </svg>
+    </div>
   );
 };
 
@@ -277,6 +314,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
   const [orientation, setOrientation] = useState<"landscape" | "portrait">("landscape");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [dragOverTableId, setDragOverTableId] = useState<string | null>(null);
+  const [draggingGuestFromTable, setDraggingGuestFromTable] = useState<string | null>(null);
 
   const canvas = orientation === "landscape" ? LANDSCAPE : PORTRAIT;
   const CANVAS_W = canvas.w;
@@ -416,13 +454,19 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
 
   /* ─── Drag-and-drop handlers for guest assignment ─── */
   const handleTableDragOver = useCallback((e: React.DragEvent, tableId: string) => {
+    const guestId = e.dataTransfer.types.includes("guest-id") ? true : false;
+    if (!guestId) return;
     const tGuests = guests.filter((g) => g.table_id === tableId);
     const table = tables.find((t) => t.id === tableId);
-    if (!table || tGuests.length >= table.capacity) return;
+    if (!table || tGuests.length >= table.capacity) {
+      // Allow drop if the dragged guest is FROM this table (no-op, but don't block)
+      if (draggingGuestFromTable === tableId) { e.preventDefault(); return; }
+      return;
+    }
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
     setDragOverTableId(tableId);
-  }, [guests, tables]);
+  }, [guests, tables, draggingGuestFromTable]);
 
   const handleTableDragLeave = useCallback(() => {
     setDragOverTableId(null);
@@ -431,13 +475,29 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
   const handleTableDrop = useCallback((e: React.DragEvent, tableId: string) => {
     e.preventDefault();
     setDragOverTableId(null);
+    setDraggingGuestFromTable(null);
     const guestId = e.dataTransfer.getData("guest-id");
     if (!guestId) return;
+    // Don't reassign if dropping on the same table
+    const guest = guests.find((g) => g.id === guestId);
+    if (guest?.table_id === tableId) return;
     const table = tables.find((t) => t.id === tableId);
     const tGuests = guests.filter((g) => g.table_id === tableId);
     if (!table || tGuests.length >= table.capacity) return;
     onAssignGuest(guestId, tableId);
   }, [tables, guests, onAssignGuest]);
+
+  const handleGuestDragStart = useCallback((e: React.DragEvent, guestId: string, guestName: string, sourceTableId: string | null) => {
+    e.dataTransfer.setData("guest-id", guestId);
+    e.dataTransfer.setData("guest-name", guestName);
+    e.dataTransfer.effectAllowed = "move";
+    setDraggingGuestFromTable(sourceTableId);
+  }, []);
+
+  const handleGuestDragEnd = useCallback(() => {
+    setDraggingGuestFromTable(null);
+    setDragOverTableId(null);
+  }, []);
 
   const handlePrint = useCallback(() => {
     setTooltip(null);
@@ -524,7 +584,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
           <span>{Math.round(scale * 100)}%</span>
         </div>
 
-        {tables.length > 0 && <p className="absolute bottom-3 left-3 text-xs text-muted-foreground font-body z-10 bg-card/80 backdrop-blur-sm rounded-lg px-2 py-1 no-print">Drag tables · Click chairs to assign · Scroll to zoom</p>}
+        {tables.length > 0 && <p className="absolute bottom-3 left-3 text-xs text-muted-foreground font-body z-10 bg-card/80 backdrop-blur-sm rounded-lg px-2 py-1 no-print">Drag tables · Drag guests between tables · Click chairs to assign · Scroll to zoom</p>}
         {tables.length === 0 && <div className="absolute inset-0 flex items-center justify-center"><p className="text-muted-foreground font-body text-sm">No tables yet — add one above</p></div>}
 
         <div
@@ -570,6 +630,8 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
                   label={table.table_name}
                   size={TABLE_SIZE}
                   highlightEmpty={isDragOver}
+                  onGuestDragStart={(e, guestId, guestName) => handleGuestDragStart(e, guestId, guestName, table.id)}
+                  onGuestDragEnd={handleGuestDragEnd}
                   onSeatClick={(seatIndex) => {
                     if (seatIndex < tableGuests.length) {
                       onAssignGuest(tableGuests[seatIndex].id, null);
