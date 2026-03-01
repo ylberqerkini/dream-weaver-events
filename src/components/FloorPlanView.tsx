@@ -158,14 +158,19 @@ const TableSVG: React.FC<{
               {canAssign && !isOccupied && (
                 <text x={s.x} y={s.y + 1.5} textAnchor="middle" fontSize="5" fill="hsl(var(--muted-foreground))" fontWeight="bold" style={{ pointerEvents: "none" }}>+</text>
               )}
-              {isOccupied && guest && (
-                <>
-                  <title>{guest.full_name} (drag to move, click to remove)</title>
-                  <text x={s.x} y={s.y + seatRadius + 7} textAnchor="middle" fontSize="3" fill="hsl(var(--muted-foreground))" style={{ pointerEvents: "none" }} fontFamily="'Inter', sans-serif">
-                    {guest.full_name.length > 10 ? guest.full_name.slice(0, 9) + "…" : guest.full_name}
-                  </text>
-                </>
-              )}
+              {isOccupied && guest && (() => {
+                const isLeftSide = s.x < 50;
+                const nameX = isLeftSide ? s.x - seatRadius - 2 : s.x + seatRadius + 2;
+                const anchor = isLeftSide ? "end" : "start";
+                return (
+                  <>
+                    <title>{guest.full_name} (drag to move, click to remove)</title>
+                    <text x={nameX} y={s.y + 1.5} textAnchor={anchor} fontSize="4.5" fontWeight="600" fill="hsl(var(--foreground))" style={{ pointerEvents: "none" }} fontFamily="'Inter', sans-serif">
+                      {guest.full_name.length > 12 ? guest.full_name.slice(0, 11) + "…" : guest.full_name}
+                    </text>
+                  </>
+                );
+              })()}
             </g>
           );
         })}
