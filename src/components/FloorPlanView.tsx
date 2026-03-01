@@ -537,21 +537,72 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
     }, 100);
   }, [scale, pan]);
 
+  const confirmedGuests = guests.filter((g) => g.rsvp_status === "confirmed");
+
   return (
     <>
+      <div id="floor-plan-print-wrapper">
       <style>{`
         @media print {
-          @page { size: A4 ${orientation}; margin: 10mm; }
+          @page { size: A4 ${orientation}; margin: 8mm; }
           body * { visibility: hidden !important; }
-          #floor-plan-printable, #floor-plan-printable * { visibility: visible !important; }
-          #floor-plan-printable {
+          #floor-plan-print-wrapper, #floor-plan-print-wrapper * { visibility: visible !important; }
+          #floor-plan-print-wrapper {
             position: fixed !important;
             left: 0 !important; top: 0 !important;
             width: 100vw !important; height: 100vh !important;
-            border: none !important; border-radius: 0 !important;
+            display: flex !important;
+            flex-direction: row !important;
             background: #fff !important;
           }
+          #floor-plan-printable {
+            flex: 1 !important;
+            height: 100% !important;
+            border: none !important; border-radius: 0 !important;
+            background: #fff !important;
+            overflow: hidden !important;
+          }
           #floor-plan-printable .no-print { display: none !important; }
+          #print-guest-list {
+            display: block !important;
+            width: 220px !important;
+            min-width: 220px !important;
+            height: 100% !important;
+            border-left: 1px solid #ddd !important;
+            padding: 10px 8px !important;
+            font-family: 'Inter', system-ui, sans-serif !important;
+            font-size: 9px !important;
+            overflow: hidden !important;
+            background: #fff !important;
+          }
+          #print-guest-list h3 {
+            font-size: 11px !important;
+            font-weight: 700 !important;
+            margin-bottom: 6px !important;
+            padding-bottom: 4px !important;
+            border-bottom: 1.5px solid #333 !important;
+          }
+          #print-guest-list .guest-row {
+            display: flex !important;
+            align-items: center !important;
+            gap: 5px !important;
+            padding: 2.5px 0 !important;
+            border-bottom: 0.5px solid #eee !important;
+          }
+          #print-guest-list .guest-checkbox {
+            width: 10px !important;
+            height: 10px !important;
+            border: 1.2px solid #555 !important;
+            border-radius: 2px !important;
+            flex-shrink: 0 !important;
+          }
+          #print-guest-list .guest-name {
+            flex: 1 !important;
+          }
+          #print-guest-list .guest-table {
+            color: #888 !important;
+            flex-shrink: 0 !important;
+          }
         }
       `}</style>
       <div
@@ -677,6 +728,24 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
           if (!table) return null;
           return <TableTooltip table={table} tableGuests={getTableGuests(table.id)} unassignedGuests={unassignedGuests} onAssign={onAssignGuest} onClose={() => setTooltip(null)} pos={tooltip.pos} canvasRect={canvasRect} />;
         })()}
+      </div>
+
+      {/* Print-only confirmed guest checklist */}
+      <div id="print-guest-list" style={{ display: "none" }}>
+        <h3>✓ Confirmed Guests ({confirmedGuests.length})</h3>
+        {confirmedGuests
+          .sort((a, b) => a.full_name.localeCompare(b.full_name))
+          .map((g) => {
+            const assignedTable = tables.find((t) => t.id === g.table_id);
+            return (
+              <div key={g.id} className="guest-row">
+                <div className="guest-checkbox" />
+                <span className="guest-name">{g.full_name}</span>
+                {assignedTable && <span className="guest-table">T{getTableNumber(assignedTable.table_name)}</span>}
+              </div>
+            );
+          })}
+      </div>
       </div>
     </>
   );
