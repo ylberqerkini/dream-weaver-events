@@ -129,7 +129,7 @@ const TablesPage: React.FC = () => {
   const [guests, setGuests] = useState<Guest[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ table_name: "", capacity: "8", shape: "round" as "round" | "square" | "head" });
+  const [form, setForm] = useState({ capacity: "8", shape: "round" as "round" | "square" | "head" });
   const [saving, setSaving] = useState(false);
   const [view, setView] = useState<"grid" | "floorplan">("grid");
 
@@ -146,21 +146,26 @@ const TablesPage: React.FC = () => {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  const getNextTableNumber = () => {
+    const nums = tables.map(t => { const m = t.table_name.match(/\d+/); return m ? parseInt(m[0]) : 0; });
+    return nums.length > 0 ? Math.max(...nums) + 1 : 1;
+  };
+
   const handleCreateTable = async () => {
-    if (!form.table_name.trim()) return toast.error("Table name is required");
     const cap = parseInt(form.capacity);
     if (isNaN(cap) || cap < 1) return toast.error("Invalid capacity");
+    const tableName = form.shape === "head" ? "Bride & Groom" : `Table ${getNextTableNumber()}`;
     setSaving(true);
     const { error } = await supabase.from("seating_tables").insert({
       event_id: eventId,
-      table_name: form.table_name.trim(),
+      table_name: tableName,
       capacity: cap,
       shape: form.shape,
     } as any).select().single();
     setSaving(false);
     if (error) { toast.error(error.message); return; }
     toast.success("Table created!");
-    setForm({ table_name: "", capacity: "8", shape: "round" as "round" | "square" | "head" });
+    setForm({ capacity: "8", shape: "round" as "round" | "square" | "head" });
     setShowForm(false);
     fetchData();
   };
@@ -305,7 +310,7 @@ const TablesPage: React.FC = () => {
                 <label className="block text-sm font-semibold mb-2">Table Shape</label>
                 <div className="grid grid-cols-3 gap-3">
                   {(["round", "square", "head"] as const).map((s) => (
-                    <button key={s} type="button" onClick={() => setForm({ ...form, shape: s, ...(s === "head" ? { capacity: "2", table_name: form.table_name || "Bride & Groom" } : {}) })} className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${form.shape === s ? "border-primary bg-champagne/60" : "border-border bg-background hover:bg-muted"}`}>
+                    <button key={s} type="button" onClick={() => setForm({ ...form, shape: s, ...(s === "head" ? { capacity: "2" } : {}) })} className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${form.shape === s ? "border-primary bg-champagne/60" : "border-border bg-background hover:bg-muted"}`}>
                       <svg viewBox="0 0 60 60" className="w-12 h-12">
                         {s === "round" ? (
                           <>
@@ -337,8 +342,7 @@ const TablesPage: React.FC = () => {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-semibold mb-1.5">Table Name</label>
-                <input value={form.table_name} onChange={(e) => setForm({ ...form, table_name: e.target.value })} placeholder="Table 1, VIP Table, Family..." className="w-full px-4 py-2.5 rounded-xl border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring" />
+                <p className="text-sm text-muted-foreground font-body">Name will be auto-assigned: <span className="font-semibold text-foreground">{form.shape === "head" ? "Bride & Groom" : `Table ${getNextTableNumber()}`}</span></p>
               </div>
               <div>
                 <label className="block text-sm font-semibold mb-1.5">Capacity</label>
