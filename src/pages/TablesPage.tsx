@@ -1,10 +1,10 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import DashboardLayout from "@/components/DashboardLayout";
 import FloorPlanView from "@/components/FloorPlanView";
 import { toast } from "sonner";
-import { Plus, Minus, Trash2, Users, X, Loader2, LayoutGrid, Map } from "lucide-react";
+import { Plus, Minus, Trash2, Users, X, Loader2, LayoutGrid, Map, Search, GripVertical } from "lucide-react";
 
 interface SeatingTable {
   id: string;
@@ -122,6 +122,74 @@ const HeadTableView: React.FC<{ capacity: number; occupied: number; label: strin
   );
 };
 
+/* ─── Assign Guest Popover ─── */
+const AssignGuestPopover: React.FC<{
+  unassignedGuests: Guest[];
+  onAssign: (guestId: string) => void;
+}> = ({ unassignedGuests, onAssign }) => {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  const filtered = unassignedGuests.filter((g) =>
+    g.full_name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSearch("");
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  return (
+    <div className="relative" ref={popoverRef}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border-2 border-dashed border-border bg-muted/30 text-xs text-muted-foreground font-body font-semibold hover:border-primary/40 hover:bg-muted/60 hover:text-foreground transition-all"
+      >
+        <Plus size={12} /> Assign Guest
+      </button>
+      {open && (
+        <div className="absolute bottom-full left-0 right-0 mb-1 bg-card border border-border rounded-xl shadow-lg z-50 overflow-hidden animate-fade-up">
+          <div className="p-2 border-b border-border">
+            <div className="relative">
+              <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                autoFocus
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search guests..."
+                className="w-full pl-7 pr-3 py-1.5 rounded-lg border border-input bg-background text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+          </div>
+          <div className="max-h-40 overflow-y-auto py-1">
+            {filtered.length === 0 && (
+              <p className="text-xs text-muted-foreground text-center py-3 font-body">No matches</p>
+            )}
+            {filtered.map((g) => (
+              <button
+                key={g.id}
+                onClick={() => { onAssign(g.id); setOpen(false); setSearch(""); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs font-body text-foreground hover:bg-muted/60 transition-colors text-left"
+              >
+                <span className="truncate flex-1">{g.full_name}</span>
+                <span className="text-[10px] text-muted-foreground capitalize shrink-0">{g.rsvp_status}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const TablesPage: React.FC = () => {
   const { eventId } = useParams<{ eventId: string }>();
   const isValidId = !!eventId && UUID_REGEX.test(eventId);
@@ -132,6 +200,7 @@ const TablesPage: React.FC = () => {
   const [form, setForm] = useState({ capacity: "8", shape: "round" as "round" | "square" | "head" });
   const [saving, setSaving] = useState(false);
   const [view, setView] = useState<"grid" | "floorplan">("grid");
+  const [dragOverTableId, setDragOverTableId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!isValidId) { setLoading(false); return; }
@@ -239,7 +308,28 @@ const TablesPage: React.FC = () => {
               const tableGuests = getTableGuests(table.id);
               const occupied = tableGuests.length;
               return (
-                <div key={table.id} className="bg-card rounded-2xl shadow-card border border-border p-5 flex flex-col gap-3">
+                <div
+                  key={table.id}
+                  className={`bg-card rounded-2xl shadow-card border-2 p-5 flex flex-col gap-3 transition-all ${dragOverTableId === table.id ? "border-primary/60 ring-2 ring-primary/20 scale-[1.02]" : "border-border"}`}
+                  onDragOver={(e) => {
+                    if (!e.dataTransfer.types.includes("guest-id")) return;
+                    const tGuests = getTableGuests(table.id);
+                    if (tGuests.length >= table.capacity) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                    setDragOverTableId(table.id);
+                  }}
+                  onDragLeave={() => setDragOverTableId(null)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDragOverTableId(null);
+                    const guestId = e.dataTransfer.getData("guest-id");
+                    if (!guestId) return;
+                    const tGuests = getTableGuests(table.id);
+                    if (tGuests.length >= table.capacity) return;
+                    handleAssignGuest(guestId, table.id);
+                  }}
+                >
                   <div className="relative w-full aspect-square max-w-[160px] mx-auto">
                     {table.shape === "head" ? (
                       <HeadTableView capacity={table.capacity} occupied={occupied} label={table.table_name} />
@@ -275,10 +365,10 @@ const TablesPage: React.FC = () => {
                     ))}
                   </div>
                   {occupied < table.capacity && unassignedGuests.length > 0 && (
-                    <select onChange={(e) => { if (e.target.value) { handleAssignGuest(e.target.value, table.id); e.target.value = ""; } }} className="w-full px-3 py-1.5 rounded-xl border border-input bg-background text-xs text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring">
-                      <option value="">+ Assign guest</option>
-                      {unassignedGuests.map((g) => (<option key={g.id} value={g.id}>{g.full_name}</option>))}
-                    </select>
+                    <AssignGuestPopover
+                      unassignedGuests={unassignedGuests}
+                      onAssign={(guestId) => handleAssignGuest(guestId, table.id)}
+                    />
                   )}
                   {occupied >= table.capacity && <p className="text-xs text-center text-muted-foreground font-body">Table full</p>}
                 </div>
@@ -288,10 +378,25 @@ const TablesPage: React.FC = () => {
               <div className="bg-champagne/50 rounded-2xl border border-border p-5">
                 <div className="flex items-center gap-2 mb-3"><Users size={18} className="text-gold" /><h3 className="font-display text-lg font-semibold">Unassigned</h3></div>
                 <p className="text-muted-foreground font-body text-sm mb-3">{unassignedGuests.length} guests without a table</p>
-                <div className="space-y-1.5">
-                  {unassignedGuests.slice(0, 6).map((g) => (<div key={g.id} className="text-sm font-body text-foreground">{g.full_name}</div>))}
-                  {unassignedGuests.length > 6 && <p className="text-xs text-muted-foreground">+{unassignedGuests.length - 6} more</p>}
+                <div className="space-y-1">
+                  {unassignedGuests.slice(0, 12).map((g) => (
+                    <div
+                      key={g.id}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData("guest-id", g.id);
+                        e.dataTransfer.setData("guest-name", g.full_name);
+                        e.dataTransfer.effectAllowed = "move";
+                      }}
+                      className="flex items-center gap-1.5 text-sm font-body text-foreground cursor-grab active:cursor-grabbing hover:bg-muted/60 rounded-lg px-2 py-1.5 transition-colors select-none group"
+                    >
+                      <GripVertical size={12} className="text-muted-foreground/40 group-hover:text-muted-foreground shrink-0" />
+                      <span className="truncate">{g.full_name}</span>
+                    </div>
+                  ))}
+                  {unassignedGuests.length > 12 && <p className="text-xs text-muted-foreground pl-2">+{unassignedGuests.length - 12} more</p>}
                 </div>
+                <p className="text-[10px] text-muted-foreground font-body text-center mt-3 pt-2 border-t border-border">Drag guests onto table cards</p>
               </div>
             )}
           </div>

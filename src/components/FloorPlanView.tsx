@@ -1,5 +1,5 @@
 import React, { useRef, useState, useCallback, useEffect } from "react";
-import { X, Printer, ZoomIn, ZoomOut, Maximize, RectangleHorizontal, RectangleVertical, Users, ChevronLeft, ChevronRight, GripVertical } from "lucide-react";
+import { X, Printer, ZoomIn, ZoomOut, Maximize, RectangleHorizontal, RectangleVertical, Users, ChevronLeft, ChevronRight, GripVertical, Plus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 interface SeatingTable {
@@ -222,36 +222,70 @@ const TableTooltip: React.FC<{
   pos: { x: number; y: number };
   canvasRect: DOMRect | null;
 }> = ({ table, tableGuests, unassignedGuests, onAssign, onClose, pos, canvasRect }) => {
-  const tipW = 220, tipH = 200;
+  const [search, setSearch] = useState("");
+  const filtered = unassignedGuests.filter((g) =>
+    g.full_name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const tipW = 240, tipH = 280;
   let left = pos.x + 14, top = pos.y - 20;
   if (canvasRect) {
     if (left + tipW > canvasRect.width) left = pos.x - tipW - 14;
     if (top + tipH > canvasRect.height) top = canvasRect.height - tipH - 8;
     if (top < 0) top = 8;
+    if (left < 0) left = 8;
   }
 
   return (
-    <div className="absolute z-30 bg-card border border-border rounded-xl shadow-card p-3 w-56 text-xs" style={{ left, top }} onMouseDown={(e) => e.stopPropagation()}>
+    <div className="absolute z-30 bg-card border border-border rounded-xl shadow-lg p-3.5 w-60" style={{ left, top }} onMouseDown={(e) => e.stopPropagation()}>
       <div className="flex items-center justify-between mb-2">
         <span className="font-display font-semibold text-sm truncate">{table.table_name}</span>
-        <button onClick={onClose} className="text-muted-foreground hover:text-foreground ml-1 shrink-0"><X size={13} /></button>
+        <button onClick={onClose} className="text-muted-foreground hover:text-foreground ml-1 shrink-0 p-0.5 rounded hover:bg-muted transition-colors"><X size={14} /></button>
       </div>
-      <p className="text-muted-foreground mb-2 font-body">{tableGuests.length}/{table.capacity} guests</p>
-      <div className="space-y-1 mb-2 max-h-24 overflow-y-auto">
-        {tableGuests.map((g) => (
-          <div key={g.id} className="flex items-center justify-between">
-            <span className="font-body truncate">{g.full_name}</span>
-            <button onClick={() => onAssign(g.id, null)} className="text-muted-foreground hover:text-destructive ml-1 shrink-0"><X size={10} /></button>
-          </div>
-        ))}
-      </div>
-      {tableGuests.length < table.capacity && unassignedGuests.length > 0 && (
-        <select onChange={(e) => { if (e.target.value) { onAssign(e.target.value, table.id); e.target.value = ""; } }} className="w-full px-2 py-1 rounded-lg border border-input bg-background text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring">
-          <option value="">+ Assign guest</option>
-          {unassignedGuests.map((g) => (<option key={g.id} value={g.id}>{g.full_name}</option>))}
-        </select>
+      <p className="text-muted-foreground mb-2.5 font-body text-xs">{tableGuests.length}/{table.capacity} guests</p>
+      
+      {/* Assigned guests */}
+      {tableGuests.length > 0 && (
+        <div className="space-y-0.5 mb-2.5 max-h-28 overflow-y-auto">
+          {tableGuests.map((g) => (
+            <div key={g.id} className="flex items-center justify-between text-xs hover:bg-muted/40 rounded-lg px-1.5 py-1 transition-colors">
+              <span className="font-body truncate">{g.full_name}</span>
+              <button onClick={() => onAssign(g.id, null)} className="text-muted-foreground hover:text-destructive ml-1 shrink-0 p-0.5" title="Remove"><X size={11} /></button>
+            </div>
+          ))}
+        </div>
       )}
-      {tableGuests.length >= table.capacity && <p className="text-center text-muted-foreground font-body">Table full</p>}
+
+      {/* Assign new guest */}
+      {tableGuests.length < table.capacity && unassignedGuests.length > 0 && (
+        <div className="border-t border-border pt-2">
+          <div className="relative mb-1.5">
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search to assign..."
+              className="w-full pl-3 pr-3 py-1.5 rounded-lg border border-input bg-background text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+              autoFocus
+            />
+          </div>
+          <div className="max-h-28 overflow-y-auto space-y-0.5">
+            {filtered.length === 0 && (
+              <p className="text-[10px] text-muted-foreground text-center py-2 font-body">No matches</p>
+            )}
+            {filtered.slice(0, 20).map((g) => (
+              <button
+                key={g.id}
+                onClick={() => { onAssign(g.id, table.id); setSearch(""); }}
+                className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-body text-foreground hover:bg-muted/60 transition-colors text-left"
+              >
+                <Plus size={10} className="text-muted-foreground shrink-0" />
+                <span className="truncate flex-1">{g.full_name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {tableGuests.length >= table.capacity && <p className="text-center text-xs text-muted-foreground font-body border-t border-border pt-2">Table full</p>}
     </div>
   );
 };
