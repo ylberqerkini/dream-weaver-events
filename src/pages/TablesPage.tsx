@@ -21,6 +21,7 @@ interface Guest {
   full_name: string;
   rsvp_status: string;
   table_id: string | null;
+  seat_index?: number | null;
 }
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -206,7 +207,7 @@ const TablesPage: React.FC = () => {
     if (!isValidId) { setLoading(false); return; }
     const [tablesRes, guestsRes] = await Promise.all([
       supabase.from("seating_tables").select("*").eq("event_id", eventId).order("table_name"),
-      supabase.from("guests").select("id, full_name, rsvp_status, table_id").eq("event_id", eventId),
+      supabase.from("guests").select("id, full_name, rsvp_status, table_id, seat_index").eq("event_id", eventId),
     ]);
     if (tablesRes.data) setTables(tablesRes.data as any);
     if (guestsRes.data) setGuests(guestsRes.data);
@@ -247,8 +248,14 @@ const TablesPage: React.FC = () => {
     fetchData();
   };
 
-  const handleAssignGuest = async (guestId: string, tableId: string | null) => {
-    await supabase.from("guests").update({ table_id: tableId }).eq("id", guestId);
+  const handleAssignGuest = async (guestId: string, tableId: string | null, seatIndex?: number | null) => {
+    const updateData: any = { table_id: tableId };
+    if (tableId === null) {
+      updateData.seat_index = null;
+    } else if (seatIndex != null) {
+      updateData.seat_index = seatIndex;
+    }
+    await supabase.from("guests").update(updateData).eq("id", guestId);
     fetchData();
   };
 

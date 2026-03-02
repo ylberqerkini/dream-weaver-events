@@ -1,0 +1,1 @@
+ALTER TABLE public.guests ADD COLUMN seat_index integer DEFAULT NULL;
