@@ -17,13 +17,14 @@ interface Guest {
   full_name: string;
   rsvp_status: string;
   table_id: string | null;
+  seat_index?: number | null;
 }
 
 interface FloorPlanViewProps {
   tables: SeatingTable[];
   guests: Guest[];
   eventId: string;
-  onAssignGuest: (guestId: string, tableId: string | null) => void;
+  onAssignGuest: (guestId: string, tableId: string | null, seatIndex?: number | null) => void;
   onRefresh: () => void;
 }
 
@@ -53,11 +54,47 @@ const getTableNumber = (label: string): string => {
   return match ? match[0] : label.charAt(0);
 };
 
+/* ─── Build a seat-indexed map of guests for a table ─── */
+function buildSeatMap(tableGuests: Guest[], capacity: number): (Guest | null)[] {
+  const seatMap: (Guest | null)[] = new Array(capacity).fill(null);
+  const unindexed: Guest[] = [];
+  
+  // First pass: place guests with a seat_index
+  for (const g of tableGuests) {
+    if (g.seat_index != null && g.seat_index >= 0 && g.seat_index < capacity && !seatMap[g.seat_index]) {
+      seatMap[g.seat_index] = g;
+    } else {
+      unindexed.push(g);
+    }
+  }
+  
+  // Second pass: place guests without seat_index into first available seats
+  let nextSeat = 0;
+  for (const g of unindexed) {
+    while (nextSeat < capacity && seatMap[nextSeat] !== null) nextSeat++;
+    if (nextSeat < capacity) {
+      seatMap[nextSeat] = g;
+      nextSeat++;
+    }
+  }
+  
+  return seatMap;
+}
+
+/* ─── Find first available seat index ─── */
+function findFirstEmptySeat(tableGuests: Guest[], capacity: number): number {
+  const seatMap = buildSeatMap(tableGuests, capacity);
+  for (let i = 0; i < seatMap.length; i++) {
+    if (seatMap[i] === null) return i;
+  }
+  return 0;
+}
+
 /* ─── Inline SVG table visuals with clickable seats ─── */
 const TableSVG: React.FC<{
   shape: string;
   capacity: number;
-  tableGuests: Guest[];
+  seatMap: (Guest | null)[];
   unassignedGuests: Guest[];
   label: string;
   size: number;
@@ -65,8 +102,8 @@ const TableSVG: React.FC<{
   highlightEmpty?: boolean;
   onGuestDragStart?: (e: React.DragEvent, guestId: string, guestName: string) => void;
   onGuestDragEnd?: () => void;
-}> = ({ shape, capacity, tableGuests, unassignedGuests, label, size, onSeatClick, highlightEmpty, onGuestDragStart, onGuestDragEnd }) => {
-  const occupied = tableGuests.length;
+}> = ({ shape, capacity, seatMap, unassignedGuests, label, size, onSeatClick, highlightEmpty, onGuestDragStart, onGuestDragEnd }) => {
+  const occupied = seatMap.filter(g => g !== null).length;
   const pct = capacity > 0 ? occupied / capacity : 0;
   const tableColor =
     pct >= 1 ? "hsl(0 72% 51%)" : pct >= 0.8 ? "hsl(38 92% 50%)" : "hsl(var(--gold))";
@@ -134,8 +171,8 @@ const TableSVG: React.FC<{
         </text>
         {/* Modern chair dots */}
         {seats.map((s, i) => {
-          const isOccupied = i < occupied;
-          const guest = tableGuests[i];
+          const guest = seatMap[i];
+          const isOccupied = guest !== null;
           const canAssign = !isOccupied && unassignedGuests.length > 0;
           const isSpecialSeat = isHead && i < 2;
           const isDropTarget = highlightEmpty && !isOccupied && occupied < capacity;
@@ -177,8 +214,7 @@ const TableSVG: React.FC<{
       </svg>
       {/* Invisible drag handles over occupied seats */}
       {seats.map((s, i) => {
-        if (i >= occupied) return null;
-        const guest = tableGuests[i];
+        const guest = seatMap[i];
         if (!guest) return null;
         const r = (isHead && i < 2) ? 9 : seatRadius;
         const pxX = (s.x / 100) * size - r * (size / 100);
@@ -215,13 +251,15 @@ const TableSVG: React.FC<{
 /* ─── Tooltip popup ─── */
 const TableTooltip: React.FC<{
   table: SeatingTable;
+  seatMap: (Guest | null)[];
   tableGuests: Guest[];
   unassignedGuests: Guest[];
-  onAssign: (guestId: string, tableId: string | null) => void;
+  onAssign: (guestId: string, tableId: string | null, seatIndex?: number | null) => void;
   onClose: () => void;
   pos: { x: number; y: number };
   canvasRect: DOMRect | null;
-}> = ({ table, tableGuests, unassignedGuests, onAssign, onClose, pos, canvasRect }) => {
+  pendingSeatIndex: number | null;
+}> = ({ table, seatMap, tableGuests, unassignedGuests, onAssign, onClose, pos, canvasRect, pendingSeatIndex }) => {
   const [search, setSearch] = useState("");
   const filtered = unassignedGuests.filter((g) =>
     g.full_name.toLowerCase().includes(search.toLowerCase())
@@ -239,7 +277,10 @@ const TableTooltip: React.FC<{
   return (
     <div className="absolute z-30 bg-card border border-border rounded-xl shadow-lg p-3.5 w-60" style={{ left, top }} onMouseDown={(e) => e.stopPropagation()}>
       <div className="flex items-center justify-between mb-2">
-        <span className="font-display font-semibold text-sm truncate">{table.table_name}</span>
+        <span className="font-display font-semibold text-sm truncate">
+          {table.table_name}
+          {pendingSeatIndex != null && <span className="text-muted-foreground font-normal text-xs ml-1">· Seat {pendingSeatIndex + 1}</span>}
+        </span>
         <button onClick={onClose} className="text-muted-foreground hover:text-foreground ml-1 shrink-0 p-0.5 rounded hover:bg-muted transition-colors"><X size={14} /></button>
       </div>
       <p className="text-muted-foreground mb-2.5 font-body text-xs">{tableGuests.length}/{table.capacity} guests</p>
@@ -250,7 +291,7 @@ const TableTooltip: React.FC<{
           {tableGuests.map((g) => (
             <div key={g.id} className="flex items-center justify-between text-xs hover:bg-muted/40 rounded-lg px-1.5 py-1 transition-colors">
               <span className="font-body truncate">{g.full_name}</span>
-              <button onClick={() => onAssign(g.id, null)} className="text-muted-foreground hover:text-destructive ml-1 shrink-0 p-0.5" title="Remove"><X size={11} /></button>
+              <button onClick={() => onAssign(g.id, null, null)} className="text-muted-foreground hover:text-destructive ml-1 shrink-0 p-0.5" title="Remove"><X size={11} /></button>
             </div>
           ))}
         </div>
@@ -263,7 +304,7 @@ const TableTooltip: React.FC<{
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search to assign..."
+              placeholder={pendingSeatIndex != null ? `Assign to seat ${pendingSeatIndex + 1}...` : "Search to assign..."}
               className="w-full pl-3 pr-3 py-1.5 rounded-lg border border-input bg-background text-xs focus:outline-none focus:ring-1 focus:ring-ring"
               autoFocus
             />
@@ -275,7 +316,11 @@ const TableTooltip: React.FC<{
             {filtered.slice(0, 20).map((g) => (
               <button
                 key={g.id}
-                onClick={() => { onAssign(g.id, table.id); setSearch(""); }}
+                onClick={() => {
+                  const seatIdx = pendingSeatIndex != null ? pendingSeatIndex : findFirstEmptySeat(tableGuests, table.capacity);
+                  onAssign(g.id, table.id, seatIdx);
+                  setSearch("");
+                }}
                 className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-body text-foreground hover:bg-muted/60 transition-colors text-left"
               >
                 <Plus size={10} className="text-muted-foreground shrink-0" />
@@ -368,7 +413,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
   const canvasRef = useRef<HTMLDivElement>(null);
   const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({});
   const [dragging, setDragging] = useState<{ id: string; offsetX: number; offsetY: number } | null>(null);
-  const [tooltip, setTooltip] = useState<{ tableId: string; pos: { x: number; y: number } } | null>(null);
+  const [tooltip, setTooltip] = useState<{ tableId: string; pos: { x: number; y: number }; seatIndex: number | null } | null>(null);
   const [canvasRect, setCanvasRect] = useState<DOMRect | null>(null);
   const [orientation, setOrientation] = useState<"landscape" | "portrait">("landscape");
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -468,7 +513,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
     const pos = positions[id] ?? { x: 0, y: 0 };
     const screenX = pos.x * scale + pan.x + TABLE_SIZE * scale;
     const screenY = pos.y * scale + pan.y;
-    setTooltip((prev) => prev?.tableId === id ? null : { tableId: id, pos: { x: screenX, y: screenY } });
+    setTooltip((prev) => prev?.tableId === id ? null : { tableId: id, pos: { x: screenX, y: screenY }, seatIndex: null });
   }, [dragging, positions, scale, pan]);
 
   const zoomIn = () => {
@@ -518,7 +563,6 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
     const tGuests = guests.filter((g) => g.table_id === tableId);
     const table = tables.find((t) => t.id === tableId);
     if (!table || tGuests.length >= table.capacity) {
-      // Allow drop if the dragged guest is FROM this table (no-op, but don't block)
       if (draggingGuestFromTable === tableId) { e.preventDefault(); return; }
       return;
     }
@@ -537,13 +581,14 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
     setDraggingGuestFromTable(null);
     const guestId = e.dataTransfer.getData("guest-id");
     if (!guestId) return;
-    // Don't reassign if dropping on the same table
     const guest = guests.find((g) => g.id === guestId);
     if (guest?.table_id === tableId) return;
     const table = tables.find((t) => t.id === tableId);
     const tGuests = guests.filter((g) => g.table_id === tableId);
     if (!table || tGuests.length >= table.capacity) return;
-    onAssignGuest(guestId, tableId);
+    // Find first empty seat for the drop
+    const seatIdx = findFirstEmptySeat(tGuests, table.capacity);
+    onAssignGuest(guestId, tableId, seatIdx);
   }, [tables, guests, onAssignGuest]);
 
   const handleGuestDragStart = useCallback((e: React.DragEvent, guestId: string, guestName: string, sourceTableId: string | null) => {
@@ -709,6 +754,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
           {tables.map((table) => {
             const pos = positions[table.id] ?? { x: 0, y: 0 };
             const tableGuests = getTableGuests(table.id);
+            const seatMap = buildSeatMap(tableGuests, table.capacity);
             const isDragging = dragging?.id === table.id;
             const isDragOver = dragOverTableId === table.id;
             return (
@@ -735,7 +781,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
                 <TableSVG
                   shape={table.shape}
                   capacity={table.capacity}
-                  tableGuests={tableGuests}
+                  seatMap={seatMap}
                   unassignedGuests={unassignedGuests}
                   label={table.table_name}
                   size={TABLE_SIZE}
@@ -743,12 +789,15 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
                   onGuestDragStart={(e, guestId, guestName) => handleGuestDragStart(e, guestId, guestName, table.id)}
                   onGuestDragEnd={handleGuestDragEnd}
                   onSeatClick={(seatIndex) => {
-                    if (seatIndex < tableGuests.length) {
-                      onAssignGuest(tableGuests[seatIndex].id, null);
+                    const guest = seatMap[seatIndex];
+                    if (guest) {
+                      // Click on occupied seat → remove guest
+                      onAssignGuest(guest.id, null, null);
                     } else {
+                      // Click on empty seat → open tooltip with this specific seat index
                       const screenX = pos.x * scale + pan.x + TABLE_SIZE * scale;
                       const screenY = pos.y * scale + pan.y;
-                      setTooltip({ tableId: table.id, pos: { x: screenX, y: screenY } });
+                      setTooltip({ tableId: table.id, pos: { x: screenX, y: screenY }, seatIndex });
                     }
                   }}
                 />
@@ -760,7 +809,9 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
         {tooltip && (() => {
           const table = tables.find((t) => t.id === tooltip.tableId);
           if (!table) return null;
-          return <TableTooltip table={table} tableGuests={getTableGuests(table.id)} unassignedGuests={unassignedGuests} onAssign={onAssignGuest} onClose={() => setTooltip(null)} pos={tooltip.pos} canvasRect={canvasRect} />;
+          const tableGuests = getTableGuests(table.id);
+          const seatMap = buildSeatMap(tableGuests, table.capacity);
+          return <TableTooltip table={table} seatMap={seatMap} tableGuests={tableGuests} unassignedGuests={unassignedGuests} onAssign={onAssignGuest} onClose={() => setTooltip(null)} pos={tooltip.pos} canvasRect={canvasRect} pendingSeatIndex={tooltip.seatIndex} />;
         })()}
       </div>
 

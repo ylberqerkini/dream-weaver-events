@@ -108,6 +108,7 @@ export type Database = {
           id: string
           phone: string | null
           rsvp_status: string
+          seat_index: number | null
           side: string
           table_id: string | null
           updated_at: string
@@ -119,6 +120,7 @@ export type Database = {
           id?: string
           phone?: string | null
           rsvp_status?: string
+          seat_index?: number | null
           side?: string
           table_id?: string | null
           updated_at?: string
@@ -130,6 +132,7 @@ export type Database = {
           id?: string
           phone?: string | null
           rsvp_status?: string
+          seat_index?: number | null
           side?: string
           table_id?: string | null
           updated_at?: string
