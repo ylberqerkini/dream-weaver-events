@@ -100,9 +100,12 @@ const TableSVG: React.FC<{
   size: number;
   onSeatClick: (seatIndex: number) => void;
   highlightEmpty?: boolean;
-  onGuestDragStart?: (e: React.DragEvent, guestId: string, guestName: string) => void;
+  onGuestDragStart?: (e: React.DragEvent, guestId: string, guestName: string, seatIndex: number) => void;
   onGuestDragEnd?: () => void;
-}> = ({ shape, capacity, seatMap, unassignedGuests, label, size, onSeatClick, highlightEmpty, onGuestDragStart, onGuestDragEnd }) => {
+  onSeatDrop?: (e: React.DragEvent, targetSeatIndex: number) => void;
+  onSeatDragOver?: (e: React.DragEvent, targetSeatIndex: number) => void;
+  dragOverSeatIndex?: number | null;
+}> = ({ shape, capacity, seatMap, unassignedGuests, label, size, onSeatClick, highlightEmpty, onGuestDragStart, onGuestDragEnd, onSeatDrop, onSeatDragOver, dragOverSeatIndex }) => {
   const occupied = seatMap.filter(g => g !== null).length;
   const pct = capacity > 0 ? occupied / capacity : 0;
   const tableColor =
@@ -176,6 +179,7 @@ const TableSVG: React.FC<{
           const canAssign = !isOccupied && unassignedGuests.length > 0;
           const isSpecialSeat = isHead && i < 2;
           const isDropTarget = highlightEmpty && !isOccupied && occupied < capacity;
+          const isSeatDropTarget = dragOverSeatIndex === i;
           return (
             <g key={i} style={{ cursor: (isOccupied || canAssign) ? "pointer" : "default" }} onMouseDown={(e) => { if (isOccupied || canAssign) e.stopPropagation(); }} onClick={(e) => { e.stopPropagation(); if (isOccupied || canAssign) onSeatClick(i); }}>
               {/* Chair body - modern rounded square */}
@@ -183,11 +187,11 @@ const TableSVG: React.FC<{
                 x={s.x - seatRadius} y={s.y - seatRadius}
                 width={seatRadius * 2} height={seatRadius * 2}
                 rx="3"
-                fill={isOccupied ? tableColor : isDropTarget ? "hsl(var(--gold) / 0.25)" : "hsl(var(--card))"}
-                stroke={isDropTarget ? "hsl(var(--gold))" : isOccupied ? tableColor : "hsl(var(--border))"}
-                strokeWidth={isDropTarget ? "2" : isOccupied ? "1.5" : "1"}
-                opacity={isOccupied ? 1 : isDropTarget ? 0.9 : canAssign ? 0.7 : 0.4}
-                strokeDasharray={isDropTarget ? "2 1.5" : undefined}
+                fill={isOccupied ? tableColor : (isDropTarget || isSeatDropTarget) ? "hsl(var(--gold) / 0.25)" : "hsl(var(--card))"}
+                stroke={(isDropTarget || isSeatDropTarget) ? "hsl(var(--gold))" : isOccupied ? tableColor : "hsl(var(--border))"}
+                strokeWidth={(isDropTarget || isSeatDropTarget) ? "2" : isOccupied ? "1.5" : "1"}
+                opacity={isOccupied ? 1 : (isDropTarget || isSeatDropTarget) ? 0.9 : canAssign ? 0.7 : 0.4}
+                strokeDasharray={(isDropTarget || isSeatDropTarget) ? "2 1.5" : undefined}
               />
               {isSpecialSeat && isOccupied && (
                 <text x={s.x} y={s.y + 1.5} textAnchor="middle" fontSize="5" fill="hsl(var(--primary-foreground))" style={{ pointerEvents: "none" }}>♥</text>
@@ -212,10 +216,9 @@ const TableSVG: React.FC<{
           );
         })}
       </svg>
-      {/* Invisible drag handles over occupied seats */}
+      {/* Invisible drag/drop handles over seats */}
       {seats.map((s, i) => {
         const guest = seatMap[i];
-        if (!guest) return null;
         const r = (isHead && i < 2) ? 9 : seatRadius;
         const pxX = (s.x / 100) * size - r * (size / 100);
         const pxY = (s.y / 100) * size - r * (size / 100);
@@ -223,12 +226,26 @@ const TableSVG: React.FC<{
         return (
           <div
             key={`drag-${i}`}
-            draggable
+            draggable={!!guest}
             onDragStart={(e) => {
+              if (!guest) return;
               e.stopPropagation();
-              onGuestDragStart?.(e, guest.id, guest.full_name);
+              onGuestDragStart?.(e, guest.id, guest.full_name, i);
             }}
             onDragEnd={onGuestDragEnd}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onSeatDragOver?.(e, i);
+            }}
+            onDragLeave={(e) => {
+              e.stopPropagation();
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onSeatDrop?.(e, i);
+            }}
             onMouseDown={(e) => e.stopPropagation()}
             style={{
               position: "absolute",
@@ -237,10 +254,10 @@ const TableSVG: React.FC<{
               width: pxSize,
               height: pxSize,
               borderRadius: "50%",
-              cursor: "grab",
+              cursor: guest ? "grab" : "default",
               zIndex: 2,
             }}
-            title={`Drag ${guest.full_name} to another table`}
+            title={guest ? `Drag ${guest.full_name} to rearrange` : undefined}
           />
         );
       })}
@@ -419,6 +436,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [dragOverTableId, setDragOverTableId] = useState<string | null>(null);
   const [draggingGuestFromTable, setDraggingGuestFromTable] = useState<string | null>(null);
+  const [dragOverSeatIndex, setDragOverSeatIndex] = useState<{ tableId: string; seatIndex: number } | null>(null);
 
   const canvas = orientation === "landscape" ? LANDSCAPE : PORTRAIT;
   const CANVAS_W = canvas.w;
@@ -558,14 +576,18 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
 
   /* ─── Drag-and-drop handlers for guest assignment ─── */
   const handleTableDragOver = useCallback((e: React.DragEvent, tableId: string) => {
-    const guestId = e.dataTransfer.types.includes("guest-id") ? true : false;
-    if (!guestId) return;
-    const tGuests = guests.filter((g) => g.table_id === tableId);
-    const table = tables.find((t) => t.id === tableId);
-    if (!table || tGuests.length >= table.capacity) {
-      if (draggingGuestFromTable === tableId) { e.preventDefault(); return; }
+    const hasGuest = e.dataTransfer.types.includes("guest-id");
+    if (!hasGuest) return;
+    // Always allow drag over same table (for seat rearranging)
+    if (draggingGuestFromTable === tableId) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      setDragOverTableId(tableId);
       return;
     }
+    const tGuests = guests.filter((g) => g.table_id === tableId);
+    const table = tables.find((t) => t.id === tableId);
+    if (!table || tGuests.length >= table.capacity) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
     setDragOverTableId(tableId);
@@ -573,11 +595,13 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
 
   const handleTableDragLeave = useCallback(() => {
     setDragOverTableId(null);
+    setDragOverSeatIndex(null);
   }, []);
 
   const handleTableDrop = useCallback((e: React.DragEvent, tableId: string) => {
     e.preventDefault();
     setDragOverTableId(null);
+    setDragOverSeatIndex(null);
     setDraggingGuestFromTable(null);
     const guestId = e.dataTransfer.getData("guest-id");
     if (!guestId) return;
@@ -586,14 +610,56 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
     const table = tables.find((t) => t.id === tableId);
     const tGuests = guests.filter((g) => g.table_id === tableId);
     if (!table || tGuests.length >= table.capacity) return;
-    // Find first empty seat for the drop
     const seatIdx = findFirstEmptySeat(tGuests, table.capacity);
     onAssignGuest(guestId, tableId, seatIdx);
   }, [tables, guests, onAssignGuest]);
 
-  const handleGuestDragStart = useCallback((e: React.DragEvent, guestId: string, guestName: string, sourceTableId: string | null) => {
+  const handleSeatDrop = useCallback((e: React.DragEvent, tableId: string, targetSeatIndex: number) => {
+    e.preventDefault();
+    setDragOverSeatIndex(null);
+    setDraggingGuestFromTable(null);
+    setDragOverTableId(null);
+    const guestId = e.dataTransfer.getData("guest-id");
+    const sourceSeatStr = e.dataTransfer.getData("source-seat-index");
+    const sourceTableId = e.dataTransfer.getData("source-table-id");
+    if (!guestId) return;
+    
+    const table = tables.find((t) => t.id === tableId);
+    if (!table) return;
+    const tableGuests = guests.filter((g) => g.table_id === tableId);
+    const seatMap = buildSeatMap(tableGuests, table.capacity);
+    const targetGuest = seatMap[targetSeatIndex];
+    
+    // Same table seat swap
+    if (sourceTableId === tableId && sourceSeatStr) {
+      const sourceSeatIndex = parseInt(sourceSeatStr, 10);
+      if (sourceSeatIndex === targetSeatIndex) return;
+      
+      if (targetGuest) {
+        // Swap: move target guest to source seat
+        onAssignGuest(targetGuest.id, tableId, sourceSeatIndex);
+      }
+      // Move dragged guest to target seat
+      onAssignGuest(guestId, tableId, targetSeatIndex);
+      return;
+    }
+    
+    // Cross-table or from unassigned
+    if (targetGuest) return; // seat occupied, can't drop from outside
+    if (tableGuests.length >= table.capacity) return;
+    onAssignGuest(guestId, tableId, targetSeatIndex);
+  }, [tables, guests, onAssignGuest]);
+
+  const handleSeatDragOver = useCallback((tableId: string, seatIndex: number) => {
+    setDragOverSeatIndex({ tableId, seatIndex });
+    setDragOverTableId(tableId);
+  }, []);
+
+  const handleGuestDragStart = useCallback((e: React.DragEvent, guestId: string, guestName: string, sourceTableId: string | null, sourceSeatIndex?: number) => {
     e.dataTransfer.setData("guest-id", guestId);
     e.dataTransfer.setData("guest-name", guestName);
+    if (sourceTableId) e.dataTransfer.setData("source-table-id", sourceTableId);
+    if (sourceSeatIndex != null) e.dataTransfer.setData("source-seat-index", String(sourceSeatIndex));
     e.dataTransfer.effectAllowed = "move";
     setDraggingGuestFromTable(sourceTableId);
   }, []);
@@ -601,6 +667,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
   const handleGuestDragEnd = useCallback(() => {
     setDraggingGuestFromTable(null);
     setDragOverTableId(null);
+    setDragOverSeatIndex(null);
   }, []);
 
   const handlePrint = useCallback(() => {
@@ -739,7 +806,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
           <span>{Math.round(scale * 100)}%</span>
         </div>
 
-        {tables.length > 0 && <p className="absolute bottom-3 left-3 text-xs text-muted-foreground font-body z-10 bg-card/80 backdrop-blur-sm rounded-lg px-2 py-1 no-print">Drag tables · Drag guests between tables · Click chairs to assign · Scroll to zoom</p>}
+        {tables.length > 0 && <p className="absolute bottom-3 left-3 text-xs text-muted-foreground font-body z-10 bg-card/80 backdrop-blur-sm rounded-lg px-2 py-1 no-print">Drag tables · Drag guests between seats & tables · Click chairs to assign · Scroll to zoom</p>}
         {tables.length === 0 && <div className="absolute inset-0 flex items-center justify-center"><p className="text-muted-foreground font-body text-sm">No tables yet — add one above</p></div>}
 
         <div
@@ -786,15 +853,16 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ tables, guests, eventId, 
                   label={table.table_name}
                   size={TABLE_SIZE}
                   highlightEmpty={isDragOver}
-                  onGuestDragStart={(e, guestId, guestName) => handleGuestDragStart(e, guestId, guestName, table.id)}
+                  dragOverSeatIndex={dragOverSeatIndex?.tableId === table.id ? dragOverSeatIndex.seatIndex : null}
+                  onGuestDragStart={(e, guestId, guestName, seatIndex) => handleGuestDragStart(e, guestId, guestName, table.id, seatIndex)}
                   onGuestDragEnd={handleGuestDragEnd}
+                  onSeatDrop={(e, targetSeatIndex) => handleSeatDrop(e, table.id, targetSeatIndex)}
+                  onSeatDragOver={(e, targetSeatIndex) => handleSeatDragOver(table.id, targetSeatIndex)}
                   onSeatClick={(seatIndex) => {
                     const guest = seatMap[seatIndex];
                     if (guest) {
-                      // Click on occupied seat → remove guest
                       onAssignGuest(guest.id, null, null);
                     } else {
-                      // Click on empty seat → open tooltip with this specific seat index
                       const screenX = pos.x * scale + pan.x + TABLE_SIZE * scale;
                       const screenY = pos.y * scale + pan.y;
                       setTooltip({ tableId: table.id, pos: { x: screenX, y: screenY }, seatIndex });
