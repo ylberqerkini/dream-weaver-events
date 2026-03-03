@@ -230,6 +230,12 @@ const TableSVG: React.FC<{
             onDragStart={(e) => {
               if (!guest) return;
               e.stopPropagation();
+              const ghost = document.createElement("div");
+              ghost.textContent = guest.full_name;
+              ghost.style.cssText = "position:fixed;top:-1000px;left:-1000px;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:600;font-family:Inter,sans-serif;background:hsl(38,92%,50%);color:#fff;white-space:nowrap;pointer-events:none;box-shadow:0 4px 12px rgba(0,0,0,0.2);";
+              document.body.appendChild(ghost);
+              e.dataTransfer.setDragImage(ghost, ghost.offsetWidth / 2, ghost.offsetHeight / 2);
+              requestAnimationFrame(() => document.body.removeChild(ghost));
               onGuestDragStart?.(e, guest.id, guest.full_name, i);
             }}
             onDragEnd={onGuestDragEnd}
@@ -394,6 +400,12 @@ const GuestSidebarPanel: React.FC<{
               key={g.id}
               draggable
               onDragStart={(e) => {
+                const ghost = document.createElement("div");
+                ghost.textContent = g.full_name;
+                ghost.style.cssText = "position:fixed;top:-1000px;left:-1000px;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:600;font-family:Inter,sans-serif;background:hsl(38,92%,50%);color:#fff;white-space:nowrap;pointer-events:none;box-shadow:0 4px 12px rgba(0,0,0,0.2);";
+                document.body.appendChild(ghost);
+                e.dataTransfer.setDragImage(ghost, ghost.offsetWidth / 2, ghost.offsetHeight / 2);
+                requestAnimationFrame(() => document.body.removeChild(ghost));
                 e.dataTransfer.setData("guest-id", g.id);
                 e.dataTransfer.setData("guest-name", g.full_name);
                 e.dataTransfer.effectAllowed = "move";
